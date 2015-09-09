@@ -1,7 +1,7 @@
 /**
 * @file ssp_global.h
  *
- * @description This is the template file of ssp_global.h for XxxxSsp.
+ * @description This is the template file of ssp_global.h for WebPA ccsp component.
  */
 
 #ifndef  _SSP_GLOBAL_H

@@ -1,27 +1,46 @@
-/*********************************************************************************
-
-    description:
-
-        This is the template file of ssp_action.c for XxxxSsp.
-        Please replace "XXXX" with your own ssp name with the same up/lower cases.
-
-**********************************************************************************/
+/**
+ * @file ssp_action.c
+ *
+ * @description This file creates WEBPA component which would register with RDK-B stack, uses functions for registration/deregistration functions of components provided by RDK-B.
+ * 
+ */
 
 #include "ssp_global.h"
 #include "dslh_dmagnt_interface.h"
 #include "ccsp_trace.h"
 
-PDSLH_CPE_CONTROLLER_OBJECT     pDslhCpeController        = NULL;
-PCOMPONENT_COMMON_WEBPAAGENT          g_pComponent_COMMON_webpaagent  = NULL;
-PCCSP_CCD_INTERFACE             pSsdCcdIf                 = (PCCSP_CCD_INTERFACE        )NULL;
-PDSLH_LCB_INTERFACE             pDslhLcbIf                = (PDSLH_LCB_INTERFACE        )NULL;
+/*----------------------------------------------------------------------------*/
+/*                                   Macros                                   */
+/*----------------------------------------------------------------------------*/
+ #define  CCSP_DATAMODEL_XML_FILE           "WebPaAgent.xml"
+
+
+/*----------------------------------------------------------------------------*/
+/*                               Library Objects                              */
+/*----------------------------------------------------------------------------*/
+
+PDSLH_CPE_CONTROLLER_OBJECT     pDslhCpeController              = NULL;
+PCOMPONENT_COMMON_WEBPAAGENT    g_pComponent_COMMON_webpaagent  = NULL;
+PCCSP_CCD_INTERFACE             pSsdCcdIf                       = (PCCSP_CCD_INTERFACE)NULL;
+PDSLH_LCB_INTERFACE             pDslhLcbIf                      = (PDSLH_LCB_INTERFACE)NULL;
+
+
+/*----------------------------------------------------------------------------*/
+/*                           External Variables                               */
+/*----------------------------------------------------------------------------*/
+
 extern char                     g_Subsystem[32];
+extern  ANSC_HANDLE             bus_handle;
+extern  ULONG                   g_ulAllocatedSizePeak;
 
-#define  CCSP_DATAMODEL_XML_FILE           "WebPaAgent.xml"
+/*----------------------------------------------------------------------------*/
+/*                           External Functions                               */
+/*----------------------------------------------------------------------------*/
 
-extern  ANSC_HANDLE                        bus_handle;
-extern  ULONG                              g_ulAllocatedSizePeak;
-
+/**
+ * @brief 
+ * This function creates component object in the CR(Component Registrar).
+ */
 ANSC_STATUS ssp_create()
 {
     /* Create component common data model object */
@@ -88,8 +107,6 @@ ANSC_STATUS ssp_create()
             pDslhLcbIf->InterfaceId              = CCSP_LIBCBK_INTERFACE_ID;
             pDslhLcbIf->hOwnerContext            = NULL;
             pDslhLcbIf->Size                     = sizeof(DSLH_LCB_INTERFACE);
-
-            //pDslhLcbIf->InitLibrary              = COSA_Init;
         }
     }
 
@@ -105,6 +122,10 @@ ANSC_STATUS ssp_create()
     return ANSC_STATUS_SUCCESS;
 }
 
+/**
+ * @brief 
+ * This function establish connection from the component to the CR(Component Registrar).
+ */
 ANSC_STATUS ssp_engage()
 {
 	ANSC_STATUS					    returnStatus                = ANSC_STATUS_SUCCESS;
@@ -133,12 +154,12 @@ ANSC_STATUS ssp_engage()
         pDslhCpeController->RegisterCcspDataModel
             (
                 (ANSC_HANDLE)pDslhCpeController,
-                CrName, /* CCSP_DBUS_INTERFACE_CR,*/              /* CCSP CR ID */
-                CCSP_DATAMODEL_XML_FILE,             /* Data Model XML file. Can be empty if only base data model supported. */
+                CrName,                                    /* CCSP_DBUS_INTERFACE_CR, CCSP CR ID */
+                CCSP_DATAMODEL_XML_FILE,                   /* Data Model XML file. Can be empty if only base data model supported. */
                 CCSP_COMPONENT_NAME_WEBPAAGENT,            /* Component Name    */
                 CCSP_COMPONENT_VERSION_WEBPAAGENT,         /* Component Version */
                 CCSP_COMPONENT_PATH_WEBPAAGENT,            /* Component Path    */
-                g_Subsystem /* Component Prefix  */
+                g_Subsystem                                /* Component Prefix  */
             );
 
     if ( returnStatus == ANSC_STATUS_SUCCESS )
@@ -150,7 +171,10 @@ ANSC_STATUS ssp_engage()
     return ANSC_STATUS_SUCCESS;
 }
 
-
+/**
+ * @brief 
+ * This function cancel the connection and delete component object from CR(Component Registrar).
+ */
 ANSC_STATUS ssp_cancel()
 {
 	int                             nRet  = 0;

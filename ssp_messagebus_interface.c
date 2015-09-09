@@ -1,17 +1,9 @@
-/*********************************************************************************
-
-    description:
-
-        This is the template file of ssp_messagebus_interface.c for XxxxSsp.
-        You may fill in the functions below if needed.
-
-        * ssp_Mbi_Initialize
-        * ssp_finalize
-        * ssp_Mbi_BusCheck    
-        * ssp_Mbi_FreeResources
-
-**********************************************************************************/
-
+/**
+*@file ssp_messagebus_interface.c
+*
+*@description This file is for Message Bus initalization of the component and component path registration.
+*
+*/
 #include "ssp_global.h"
 
 

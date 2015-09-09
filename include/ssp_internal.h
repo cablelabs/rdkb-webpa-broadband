@@ -1,11 +1,15 @@
 /**
 * @file ssp_internal.h
  *
- * @description This is the template file of ssp_internal.h for XxxxSsp where "Xxxx" is ssp name.
+ * @description This is the template file of ssp_internal.h for WebPA ccsp component.
  */
 
 #ifndef  _SSP_INTERNAL_H_
 #define  _SSP_INTERNAL_H_
+
+/*----------------------------------------------------------------------------*/
+/*                                   Macros                                   */
+/*----------------------------------------------------------------------------*/
 
 #define  CCSP_COMMON_COMPONENT_HEALTH_Red                   1
 #define  CCSP_COMMON_COMPONENT_HEALTH_Yellow                2
@@ -26,6 +30,9 @@
 
 #define  MESSAGE_BUS_CONFIG_FILE                            "msg_daemon.cfg"
 
+/**
+ * @brief Defines webpa agent component Structure
+ */
 typedef  struct
 _COMPONENT_COMMON_WEBPAAGENT
 {
@@ -44,6 +51,10 @@ _COMPONENT_COMMON_WEBPAAGENT
 }
 COMPONENT_COMMON_WEBPAAGENT,  *PCOMPONENT_COMMON_WEBPAAGENT;
 
+/**
+ * @brief Initializes webpa agent component
+ * param[in] component_com_webpaagent object
+ */
 #define ComponentCommonDmInit(component_com_webpaagent)                                          \
         {                                                                                  \
             AnscZeroMemory(component_com_webpaagent, sizeof(COMPONENT_COMMON_WEBPAAGENT));             \
@@ -60,7 +71,10 @@ COMPONENT_COMMON_WEBPAAGENT,  *PCOMPONENT_COMMON_WEBPAAGENT;
             component_com_webpaagent->MemConsumed = 0;                                           \
         }
 
-
+/**
+ * @brief clears webpa agent component
+ * param[in] component_com_webpaagent object
+ */
 #define  ComponentCommonDmClean(component_com_webpaagent)                                        \
          {                                                                                  \
             if ( component_com_webpaagent->Name )                                                \
@@ -74,7 +88,10 @@ COMPONENT_COMMON_WEBPAAGENT,  *PCOMPONENT_COMMON_WEBPAAGENT;
             }                                                                               \
          }
 
-
+/**
+ * @brief free webpa agent component
+ * param[in] component_com_webpaagent object
+ */
 #define  ComponentCommonDmFree(component_com_webpaagent)                                         \
          {                                                                                  \
             ComponentCommonDmClean(component_com_webpaagent);                                    \
@@ -83,17 +100,25 @@ COMPONENT_COMMON_WEBPAAGENT,  *PCOMPONENT_COMMON_WEBPAAGENT;
 
 int  cmd_dispatch(int  command);
 
-
+/**
+ * @brief ssp_create function definition to create component
+ */
 ANSC_STATUS
 ssp_create
 (
 );
 
+/**
+ * @brief ssp_engage function definition to engage component
+ */
 ANSC_STATUS
 ssp_engage
 (
 );
 
+/**
+ * @brief ssp_cancel function definition to cancel component
+ */
 ANSC_STATUS
 ssp_cancel
 (
