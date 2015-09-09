@@ -1,7 +1,7 @@
 /**
  * @file ssp_messagebus_interface.h
  *
- * @description This is the template file of ssp_messagebus_interface.h for XxxxSsp.
+ * @description This header defines the Message Bus initalization and component path registration methods.
  */
 
 /**

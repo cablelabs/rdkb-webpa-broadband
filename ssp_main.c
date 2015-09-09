@@ -1,3 +1,9 @@
+/**
+* @file ssp_main.c
+* 
+* @description This file is used to manage the dbus call and stack trace.
+*
+*/
 #ifdef __GNUC__
 #ifndef _BUILD_ANDROID
 #include <execinfo.h>
@@ -9,8 +15,29 @@
 #include "ccsp_dm_api.h"
 #include "wal.h"
 
-char                                        g_Subsystem[32]         = {0};
+/*----------------------------------------------------------------------------*/
+/*                                   Macros                                   */
+/*----------------------------------------------------------------------------*/
+/*None*/
 
+/*----------------------------------------------------------------------------*/
+/*                               File scoped variables                              */
+/*----------------------------------------------------------------------------*/
+char  g_Subsystem[32] = {0};
+
+/*----------------------------------------------------------------------------*/
+/*                             Function Prototypes                            */
+/*----------------------------------------------------------------------------*/
+static void daemonize(void);
+
+
+/*----------------------------------------------------------------------------*/
+/*                             External Functions                             */
+/*----------------------------------------------------------------------------*/
+
+/**
+ * @brief This functionality helps in approaching the bus deamon to create and engage the components.
+ */
 int  cmd_dispatch(int  command)
 {
     switch ( command )
@@ -71,32 +98,68 @@ int  cmd_dispatch(int  command)
     return 0;
 }
 
-static void print_stack_backtrace(void)
+/**
+ * @brief Bus platform initialization to engage the component to CR(Component Registrar).
+ */
+WAL_STATUS msgBusInit(const char *pComponentName)
 {
-#ifdef __GNUC__
-#ifndef _BUILD_ANDROID
-	void* tracePtrs[100];
-	char** funcNames = NULL;
-	int i, count = 0;
+    ANSC_STATUS                     returnStatus       = ANSC_STATUS_SUCCESS;
+    BOOL                            bRunAsDaemon       = TRUE;
+    int                             cmdChar            = 0;
+    int                             idx = 0;
+    extern ANSC_HANDLE bus_handle;
+    char *subSys            = NULL;  
+    DmErr_t    err;
+    AnscCopyString(g_Subsystem, "eRT.");
 
-	count = backtrace( tracePtrs, 100 );
-	backtrace_symbols_fd( tracePtrs, count, 2 );
+    if ( bRunAsDaemon ) 
+        daemonize();
 
-	funcNames = backtrace_symbols( tracePtrs, count );
+    cmd_dispatch('e');
 
-	if ( funcNames ) {
-            // Print the stack trace
-	    for( i = 0; i < count; i++ )
-		printf("%s\n", funcNames[i] );
+    subSys = NULL;      /* use default sub-system */
 
-            // Free the string pointers
-            free( funcNames );
-	}
-#endif
-#endif
+    err = Cdm_Init(bus_handle, subSys, NULL, NULL, pComponentName);
+    if (err != CCSP_SUCCESS)
+    {
+        fprintf(stderr, "Cdm_Init: %s\n", Cdm_StrError(err));
+        exit(1);
+    }
+    system("touch /tmp/webpa_initialized");
+if ( bRunAsDaemon )
+    {
+        return WAL_FAILURE;
+    }
+    else
+    {
+        while ( cmdChar != 'q' )
+        {
+            cmdChar = getchar();
+
+            cmd_dispatch(cmdChar);
+        }
+    }
+
+    err = Cdm_Term();
+    if (err != CCSP_SUCCESS)
+    {
+    fprintf(stderr, "Cdm_Term: %s\n", Cdm_StrError(err));
+    exit(1);
+    }
+
+    ssp_cancel();
+    return WAL_SUCCESS;
 }
 
+/*----------------------------------------------------------------------------*/
+/*                             Internal functions                             */
+/*----------------------------------------------------------------------------*/
+
 #if defined(_ANSC_LINUX)
+
+/**
+ * @brief daemonize is a continous loop running in the background waiting to cater component requests.
+ */
 static void daemonize(void) {
 	
 	switch (fork()) {
@@ -116,8 +179,6 @@ static void daemonize(void) {
 		CcspTraceInfo(("Error demonizing (setsid)! %d - %s\n", errno, strerror(errno)));
 		exit(0);
 	}
-
-//	chdir("/");
 
 
 #ifndef  _DEBUG
@@ -142,53 +203,4 @@ static void daemonize(void) {
 
 #endif
 
-WAL_STATUS msgBusInit(const char *pComponentName)
-{
-    ANSC_STATUS                     returnStatus       = ANSC_STATUS_SUCCESS;
-    BOOL                            bRunAsDaemon       = TRUE;
-    int                             cmdChar            = 0;
-    int                             idx = 0;
-    extern ANSC_HANDLE bus_handle;
-    char *subSys            = NULL;  
-    DmErr_t    err;
-    AnscCopyString(g_Subsystem, "eRT.");
-    //pComponentName          = CCSP_COMPONENT_NAME_WEBPAAGENT;
 
-    if ( bRunAsDaemon ) 
-        daemonize();
-
-    cmd_dispatch('e');
-
-    subSys = NULL;      /* use default sub-system */
-
-    err = Cdm_Init(bus_handle, subSys, NULL, NULL, pComponentName);
-    if (err != CCSP_SUCCESS)
-    {
-        fprintf(stderr, "Cdm_Init: %s\n", Cdm_StrError(err));
-        exit(1);
-    }
-    system("touch /tmp/webpa_initialized");
-if ( bRunAsDaemon )
-    {
-		return WAL_FAILURE;
-    }
-    else
-    {
-        while ( cmdChar != 'q' )
-        {
-            cmdChar = getchar();
-
-            cmd_dispatch(cmdChar);
-        }
-    }
-
-	err = Cdm_Term();
-	if (err != CCSP_SUCCESS)
-	{
-	fprintf(stderr, "Cdm_Term: %s\n", Cdm_StrError(err));
-	exit(1);
-	}
-
-	ssp_cancel();
-    return WAL_SUCCESS;
-}
