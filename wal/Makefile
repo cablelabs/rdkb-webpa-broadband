@@ -7,7 +7,7 @@ include $(CCSP_ROOT_DIR)/arch/ccsp_common.mk
 
 INCPATH += $(CCSP_ROOT_DIR)/hal/include
 INCPATH += $(CCSP_ROOT_DIR)/webpa/include
-INCPATH += $(CCSP_ROOT_DIR)/webpa/source/wal/include
+INCPATH += $(CCSP_ROOT_DIR)/webpa/source/wal/wal/include
 
 CFLAGS += $(addprefix -I, $(INCPATH))
 
