@@ -20,6 +20,7 @@
 #define MAX_PARAMETERVALUE_LEN					512
 #define MAX_DBUS_INTERFACE_LEN					32
 #define MAX_PATHNAME_CR_LEN						64
+#define CCSP_COMPONENT_ID_WebPA    				0x0000000A
 /*----------------------------------------------------------------------------*/
 /*                               Data Structures                              */
 /*----------------------------------------------------------------------------*/
@@ -59,7 +60,7 @@ static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 /*                             Function Prototypes                            */
 /*----------------------------------------------------------------------------*/
 static WAL_STATUS mapStatus(int ret);
-static void ccspWebPaValueChangedCB(ParamNotify *paramNotify, int size,void* user_data);
+static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size,void* user_data);
 static int getParamValues(char *pParameterName, ParamVal ***parametervalArr,int *TotalParams);
 static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalParams);
 static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned int isAtomic, int * setRet);
@@ -235,13 +236,24 @@ static WAL_STATUS mapStatus(int ret)
 /**
  * @brief ccspWebPaValueChangedCB callback function for set notification
  *
- * @param[in] paramNotify notification struct
+ * @param[in] val parameterSigStruct_t notification struct got from stack
  * @param[in] size 
  * @param[in] user_data
  */
-static void ccspWebPaValueChangedCB(ParamNotify *paramNotify, int size, void* user_data)
+static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* user_data)
 {
-	(*fp_stack)(paramNotify);
+	WalPrint("Inside CcspWebpaValueChangedCB\n");
+
+	ParamNotify paramNotify;
+	paramNotify.paramName = val->parameterName;
+	paramNotify.oldValue= val->oldValue;
+	paramNotify.newValue = val->newValue;
+	paramNotify.type = val->type;
+	paramNotify.writeID = val->writeID;
+	
+	WalPrint("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Write ID: %d\n", paramNotify.paramName, paramNotify.oldValue, paramNotify.newValue, paramNotify.type, paramNotify.writeID);
+	
+	(*fp_stack)(&paramNotify);
 }
 
 /**
@@ -285,7 +297,6 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 			parametervalError[0] = (parameterValStruct_t *) malloc(
 					sizeof(parameterValStruct_t) * 1);
 			parametervalError[0]->parameterValue = "ERROR";
-			IndexMpa_CPEtoWEBPA(&pParameterName);
 			parametervalError[0]->parameterName = pParameterName;
 			parametervalError[0]->type = ccsp_string;
 			*parametervalArr = parametervalError;
@@ -312,7 +323,6 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 		parametervalError[0] = (parameterValStruct_t *) malloc(
 				sizeof(parameterValStruct_t));
 		parametervalError[0]->parameterValue = "ERROR";
-		IndexMpa_CPEtoWEBPA(&pParameterName);
 		parametervalError[0]->parameterName = pParameterName;
 		parametervalError[0]->type = ccsp_string;
 		*parametervalArr = parametervalError;
@@ -364,7 +374,6 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 			attr[0][0] = (AttrVal *) malloc(sizeof(AttrVal) * 1);
 			attr[0][0]->name = (char *) malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
 			attr[0][0]->value = (char *) malloc(sizeof(char) * MAX_PARAMETERVALUE_LEN);
-			IndexMpa_CPEtoWEBPA(&pParameterName);	
 			sprintf(attr[0][0]->value, "%d", -1);
 			strcpy(attr[0][0]->name, pParameterName);
 			attr[0][0]->type = WAL_INT;
@@ -395,7 +404,6 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 		attr[0][0] = (AttrVal *) malloc(sizeof(AttrVal) * 1);
 		attr[0][0]->name = (char *) malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
 		attr[0][0]->value = (char *) malloc(sizeof(char) * MAX_PARAMETERVALUE_LEN);
-		IndexMpa_CPEtoWEBPA(&pParameterName);
 		sprintf(attr[0][0]->value, "%d", -1);
 		strcpy(attr[0][0]->name, pParameterName);
 		attr[0][0]->type = WAL_INT;
@@ -458,7 +466,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 					continue;
 				}
 
-				ret = CcspBaseIf_setParameterValues(bus_handle,	ppComponents[0]->componentName, ppComponents[0]->dbusPath, 					0,0x0, &val[cnt], 1, TRUE, &faultParam);
+				ret = CcspBaseIf_setParameterValues(bus_handle,	ppComponents[0]->componentName, ppComponents[0]->dbusPath, 					0,CCSP_COMPONENT_ID_WebPA, &val[cnt], 1, TRUE, &faultParam);
 
 				if (ret != CCSP_SUCCESS && faultParam)
 				{
@@ -558,7 +566,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			} 			
 		}
 		
-		ret = CcspBaseIf_setParameterValues(bus_handle,ppComponents[0]->componentName, ppComponents[0]->dbusPath, 0,0x0, val, paramCount, TRUE, &faultParam);
+		ret = CcspBaseIf_setParameterValues(bus_handle,ppComponents[0]->componentName, ppComponents[0]->dbusPath, 0,CCSP_COMPONENT_ID_WebPA, val, paramCount, TRUE, &faultParam);
 		
 		if (ret != CCSP_SUCCESS && faultParam) 
 		{
@@ -597,7 +605,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			}
 
 			ret = CcspBaseIf_setParameterValues(bus_handle, ppComponents[0]->componentName, ppComponents[0]->dbusPath,
-				0, 0x0,	RadApplyParam, nreq, TRUE,&faultParam);
+				0, CCSP_COMPONENT_ID_WebPA,	RadApplyParam, nreq, TRUE,&faultParam);
 			if (ret != CCSP_SUCCESS && faultParam) 
 			{
 				WalError("Failed to Set Apply Settings\n");
