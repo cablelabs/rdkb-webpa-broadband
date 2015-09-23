@@ -329,6 +329,7 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 		*TotalParams = 1;
 		WalError("Error: Parameter name is not supported.ret : %d\n", ret);
 	}
+	free_componentStruct_t(bus_handle, size, ppComponents);
 	return ret;
 }
 
@@ -370,7 +371,7 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 
 		if (CCSP_SUCCESS != ret)
 		{
-			attr[0] = (AttrVal *) malloc(sizeof(AttrVal) * 1);
+			attr[0] = (AttrVal **) malloc(sizeof(AttrVal *) * 1);
 			attr[0][0] = (AttrVal *) malloc(sizeof(AttrVal) * 1);
 			attr[0][0]->name = (char *) malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
 			attr[0][0]->value = (char *) malloc(sizeof(char) * MAX_PARAMETERVALUE_LEN);
@@ -383,7 +384,8 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 		else
 		{
 			*TotalParams = sizeAttrArr;
-			attr[0] = (AttrVal *) malloc(sizeof(AttrVal) * sizeAttrArr);
+			WalPrint("sizeAttrArr: %d\n",sizeAttrArr);
+			attr[0] = (AttrVal **) malloc(sizeof(AttrVal *) * sizeAttrArr);
 			for (x = 0; x < sizeAttrArr; x++)
 			{
 				attr[0][x] = (AttrVal *) malloc(sizeof(AttrVal) * 1);
@@ -396,6 +398,7 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 				attr[0][x]->type = WAL_INT;
 			}
 		}
+		free_parameterAttributeStruct_t(bus_handle, sizeAttrArr, ppAttrArray);
 		free_componentStruct_t(bus_handle, size, ppComponents);
 	}
 	else
@@ -472,6 +475,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				{
 					setRet[cnt] = ret;
 					WalError("Error:Failed to SetValue for param  '%s' ret : %d \n", faultParam, ret);
+					free_componentStruct_t(bus_handle, size, ppComponents);
 					continue;
 				}
 				
@@ -490,14 +494,6 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			free(faultParam);
 		}
 		faultParam = NULL;
-		for (cnt1 = 0; cnt1 < paramCount; cnt1++) 
-		{
-			if (val[cnt1].parameterName) 
-			{
-				free(val[cnt1].parameterName);
-			}
-			val[cnt1].parameterName = NULL;
-		}
 	}
 	else
 	{
@@ -576,6 +572,13 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				free(val);
 			}
 			val = NULL;
+		
+			if (faultParam) 
+			{
+				free(faultParam);
+			}		
+			faultParam = NULL;
+			free_componentStruct_t(bus_handle, size, ppComponents);
 			return ret;
 		}
 
@@ -624,15 +627,6 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			free(faultParam);
 		}		
 		faultParam = NULL;
-
-		for (cnt1 = 0; cnt1 < paramCount; cnt1++) 
-		{
-			if (val[cnt1].parameterName) 
-			{
-				free(val[cnt1].parameterName);
-			}
-			val[cnt1].parameterName = NULL;
-		}
 	}
 	
 	if (val) 
@@ -653,17 +647,14 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
  
 static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *paramVal, char *paramName)
 {
-	val->parameterName = malloc( sizeof(char) * MAX_PARAMETERNAME_LEN);
-	val->parameterValue = malloc( sizeof(char) * MAX_PARAMETERVALUE_LEN);
+	val->parameterName = paramName;
+	val->parameterValue = paramVal->value;
 
 	if(val->parameterName == NULL)
 	{
 		return WAL_FAILURE;
 	}
-	strcpy(val->parameterName,paramName);
-
-	val->parameterValue = paramVal->value;
-	
+		
 	switch(paramVal->type)
 	{ 
 		case 0:
