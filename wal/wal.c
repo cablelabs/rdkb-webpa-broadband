@@ -274,7 +274,7 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 	
 	componentStruct_t ** ppComponents = NULL;
 	parameterValStruct_t **parameterval = NULL;
-	parameterValStruct_t **parametervalError = NULL;
+	parameterValStruct_t *parametervalError = NULL;
 	strcpy(l_Subsystem, "eRT.");
 	strcpy(paramName, pParameterName);
 	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
@@ -292,14 +292,13 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 
 		if (ret != CCSP_SUCCESS)
 		{
-			parametervalError = (parameterValStruct_t **) malloc(
-						sizeof(parameterValStruct_t *) * 1);
-			parametervalError[0] = (parameterValStruct_t *) malloc(
-					sizeof(parameterValStruct_t) * 1);
-			parametervalError[0]->parameterValue = "ERROR";
-			parametervalError[0]->parameterName = pParameterName;
-			parametervalError[0]->type = ccsp_string;
-			*parametervalArr = parametervalError;
+			parametervalArr[0] = (ParamVal **) malloc(sizeof(ParamVal *) * 1);
+			parametervalError = (parameterValStruct_t *) malloc(sizeof(parameterValStruct_t));
+			parametervalError->parameterValue = NULL;
+			parametervalError->parameterName = (char *)malloc(sizeof(char)*MAX_PARAMETERNAME_LEN);
+			strcpy(parametervalError->parameterName,pParameterName);
+			parametervalError->type = ccsp_string;
+			parametervalArr[0][0] = parametervalError;
 			*TotalParams = 1;
 			WalError("Error:Failed to GetValue for param: %s ret: %d\n", paramName, ret);
 
@@ -314,18 +313,22 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 				parametervalArr[0][i] = parameterval[i];
 				WalPrint("success: %s %s %d \n",parametervalArr[0][i]->name,parametervalArr[0][i]->value,parametervalArr[0][i]->type);
 			}
+			if(parameterval)
+			 {
+			 	free(parameterval);
+			 }
+			 parameterval = NULL;
 		}
 	}
 	else
 	{
-		parametervalError = (parameterValStruct_t **) malloc(
-					sizeof(parameterValStruct_t *) * 1);
-		parametervalError[0] = (parameterValStruct_t *) malloc(
-				sizeof(parameterValStruct_t));
-		parametervalError[0]->parameterValue = "ERROR";
-		parametervalError[0]->parameterName = pParameterName;
-		parametervalError[0]->type = ccsp_string;
-		*parametervalArr = parametervalError;
+		parametervalArr[0] = (ParamVal **) malloc(sizeof(ParamVal *) * 1);
+		parametervalError = (parameterValStruct_t *) malloc(sizeof(parameterValStruct_t));
+		parametervalError->parameterValue = NULL;
+		parametervalError->parameterName = (char *)malloc(sizeof(char)*MAX_PARAMETERNAME_LEN);
+		strcpy(parametervalError->parameterName,pParameterName);
+		parametervalError->type = ccsp_string;
+		parametervalArr[0][0] = parametervalError;
 		*TotalParams = 1;
 		WalError("Error: Parameter name is not supported.ret : %d\n", ret);
 	}
@@ -403,7 +406,7 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 	}
 	else
 	{
-		attr[0] = (AttrVal *) malloc(sizeof(AttrVal) * 1);
+		attr[0] = (AttrVal **) malloc(sizeof(AttrVal *) * 1);
 		attr[0][0] = (AttrVal *) malloc(sizeof(AttrVal) * 1);
 		attr[0][0]->name = (char *) malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
 		attr[0][0]->value = (char *) malloc(sizeof(char) * MAX_PARAMETERVALUE_LEN);
