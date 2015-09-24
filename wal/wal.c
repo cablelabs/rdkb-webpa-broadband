@@ -469,6 +469,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				{
 					setRet[cnt] = ret;
 					WalError("Error:Preparing parameter value struct is failed. \n");
+					free_componentStruct_t(bus_handle, size, ppComponents);
 					continue;
 				}
 
@@ -478,6 +479,11 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				{
 					setRet[cnt] = ret;
 					WalError("Error:Failed to SetValue for param  '%s' ret : %d \n", faultParam, ret);
+					if (faultParam) 
+					{
+						free(faultParam);
+					}
+					faultParam = NULL;
 					free_componentStruct_t(bus_handle, size, ppComponents);
 					continue;
 				}
@@ -489,14 +495,10 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			{
 				setRet[cnt] = ret;
 				WalError("Error: Parameter name is not supported.ret : %d\n", ret);
+				free_componentStruct_t(bus_handle, size, ppComponents);
 				continue;
 			} 			
 		}
-		if (faultParam) 
-		{
-			free(faultParam);
-		}
-		faultParam = NULL;
 	}
 	else
 	{
