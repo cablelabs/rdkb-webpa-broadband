@@ -66,7 +66,8 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned int isAtomic, int * setRet);
 static int setParamAttributes(const char *pParameterName, const AttrVal *attArr);
 static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *paramVal, char *paramName);
-static void identifyRadioIndexToReset(int paramCount, ParamVal *paramVal,BOOL *bRestartRadio1,BOOL *bRestartRadio2);
+static void free_set_param_values_memory(parameterValStruct_t* val, int paramCount, char * faultParam);
+static void identifyRadioIndexToReset(int paramCount, parameterValStruct_t* val,BOOL *bRestartRadio1,BOOL *bRestartRadio2);
 static void IndexMpa_WEBPAtoCPE(char *pParameterName);
 static void IndexMpa_CPEtoWEBPA(char **ppParameterName);
 
@@ -489,7 +490,6 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				}
 				
 				setRet[cnt] = ret;
-				free_componentStruct_t(bus_handle, size, ppComponents);
 			}
 			else 
 			{
@@ -541,6 +541,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				if (strcmp(CompName, ppComponents[0]->componentName) != 0)
 				{
 					WalError("Error: Parameters does not belong to the same component\n");
+					free_componentStruct_t(bus_handle, size, ppComponents);
 					if (val) 
 					{
 						free(val);
@@ -553,16 +554,16 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				if(ret)
 				{
 					WalError("Error:Preparing parameter value struct is Failed \n");
+					free_componentStruct_t(bus_handle, size, ppComponents);
+					free_set_param_values_memory(val,paramCount,faultParam);
+					return ret;
 				}
 			}
 			else 
 			{
 				WalError("Error: Parameter name is not supported.ret : %d\n", ret);
-				if (val) 
-				{
-					free(val);
-				}
-				val = NULL;
+				free_componentStruct_t(bus_handle, size, ppComponents);
+				free_set_param_values_memory(val,paramCount,faultParam);
 				return ret;
 			} 			
 		}
@@ -572,18 +573,8 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 		if (ret != CCSP_SUCCESS && faultParam) 
 		{
 			WalError("Error:Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
-			if (val) 
-			{
-				free(val);
-			}
-			val = NULL;
-		
-			if (faultParam) 
-			{
-				free(faultParam);
-			}		
-			faultParam = NULL;
 			free_componentStruct_t(bus_handle, size, ppComponents);
+			free_set_param_values_memory(val,paramCount,faultParam);
 			return ret;
 		}
 
@@ -591,7 +582,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 		if(bRadioRestartEn)
 		{
 			bRadioRestartEn = FALSE;
-			identifyRadioIndexToReset(paramCount,paramVal,&bRestartRadio1,&bRestartRadio2);
+			identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
 			if((bRestartRadio1 == TRUE) && (bRestartRadio2 == TRUE)) 
 			{
 				WalPrint("Need to restart both the Radios\n");
@@ -617,29 +608,48 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			if (ret != CCSP_SUCCESS && faultParam) 
 			{
 				WalError("Failed to Set Apply Settings\n");
-				if (faultParam) 
-				{
-					free(faultParam);
-				}
-				faultParam = NULL;
 			}
 		}
 
-		free_componentStruct_t(bus_handle, size, ppComponents);
-		
-		if (faultParam) 
-		{
-			free(faultParam);
-		}		
-		faultParam = NULL;
 	}
 	
+	free_componentStruct_t(bus_handle, size, ppComponents);
+	free_set_param_values_memory(val,paramCount,faultParam);
+	
+	return ret;
+}
+
+
+/**
+ * @brief free_set_param_values_memory to free memory allocated in setParamValues function
+ *
+ * @param[in] val parameter value Array
+ * @param[in] paramCount parameter count
+ * @param[in] faultParam fault Param
+ */
+static void free_set_param_values_memory(parameterValStruct_t* val, int paramCount, char * faultParam)
+{
+	WalPrint("Inside free_set_param_values_memory\n");	
+	int cnt1 = 0;
+	if (faultParam) 
+	{
+		free(faultParam);
+	}		
+	faultParam = NULL;
+
+	for (cnt1 = 0; cnt1 < paramCount; cnt1++) 
+	{
+		if (val[cnt1].parameterName) 
+		{
+			free(val[cnt1].parameterName);
+		}
+		val[cnt1].parameterName = NULL;
+	}	
 	if (val) 
 	{
 		free(val);
 	}
 	val = NULL;
-	return ret;
 }
 
 /**
@@ -652,13 +662,15 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
  
 static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *paramVal, char *paramName)
 {
-	val->parameterName = paramName;
-	val->parameterValue = paramVal->value;
+	val->parameterName = malloc( sizeof(char) * MAX_PARAMETERNAME_LEN);
 
 	if(val->parameterName == NULL)
 	{
 		return WAL_FAILURE;
 	}
+	strcpy(val->parameterName,paramName);
+
+	val->parameterValue = paramVal->value;
 		
 	switch(paramVal->type)
 	{ 
@@ -710,25 +722,26 @@ static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *par
  * @param[out] bRestartRadio1
  * @param[out] bRestartRadio2
  */
-static void identifyRadioIndexToReset(int paramCount, ParamVal *paramVal,BOOL *bRestartRadio1,BOOL *bRestartRadio2) 
+static void identifyRadioIndexToReset(int paramCount, parameterValStruct_t* val,BOOL *bRestartRadio1,BOOL *bRestartRadio2) 
 {
 	int x =0 ,index =0, SSID =0,apply_rf =0;
 	for (x = 0; x < paramCount; x++)
 	{
-		if (!strncmp(paramVal[x].name, "Device.WiFi.Radio.1.", 20))
+		WalPrint("val[%d].parameterName : %s\n",x,val[x].parameterName);
+		if (!strncmp(val[x].parameterName, "Device.WiFi.Radio.1.", 20))
 		{
 			*bRestartRadio1 = TRUE;
 		}
-		else if (!strncmp(paramVal[x].name, "Device.WiFi.Radio.2.", 20))
+		else if (!strncmp(val[x].parameterName, "Device.WiFi.Radio.2.", 20))
 		{
 			*bRestartRadio2 = TRUE;
 		}
 		else
 		{
-			if ((!strncmp(paramVal[x].name, "Device.WiFi.SSID.", 17)))
+			if ((!strncmp(val[x].parameterName, "Device.WiFi.SSID.", 17)))
 			{
-				sscanf(paramVal[x].name, "Device.WiFi.SSID.%d", &index);
-				WalPrint("index = %d\n", index);
+				sscanf(val[x].parameterName, "Device.WiFi.SSID.%d", &index);
+				WalPrint("SSID index = %d\n", index);
 				SSID = (1 << ((index) - 1));
 				apply_rf = (2 - ((index) % 2));
 				WalPrint("apply_rf = %d\n", apply_rf);
@@ -742,11 +755,13 @@ static void identifyRadioIndexToReset(int paramCount, ParamVal *paramVal,BOOL *b
 					*bRestartRadio2 = TRUE;
 				}
 			}
-			else if (!strncmp(paramVal[x].name, "Device.WiFi.AccessPoint.",24))
+			else if (!strncmp(val[x].parameterName, "Device.WiFi.AccessPoint.",24))
 			{
-				sscanf(paramVal[x].name, "Device.WiFi.AccessPoint.%d", &index);
+				sscanf(val[x].parameterName, "Device.WiFi.AccessPoint.%d", &index);
+				WalPrint("AccessPoint index = %d\n", index);
 				SSID = (1 << ((index) - 1));
 				apply_rf = (2 - ((index) % 2));
+				WalPrint("apply_rf = %d\n", apply_rf);
 
 				if (apply_rf == 1)
 				{
