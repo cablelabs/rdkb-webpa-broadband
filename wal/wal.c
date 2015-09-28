@@ -490,6 +490,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				}
 				
 				setRet[cnt] = ret;
+				free_componentStruct_t(bus_handle, size, ppComponents);
 			}
 			else 
 			{
@@ -515,6 +516,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				free(val);
 			}
 			val = NULL;
+			free_componentStruct_t(bus_handle, size, ppComponents);
 			return ret;
 		}
 		strcpy(CompName, ppComponents[0]->componentName);
@@ -523,7 +525,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 		{
 			bRadioRestartEn = TRUE;
 		}
-		
+        free_componentStruct_t(bus_handle, size, ppComponents);
 
 		for (cnt = 0; cnt < paramCount; cnt++) 
 		{
@@ -532,8 +534,6 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 
 			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle, dst_pathname_cr, paramName, l_Subsystem,
 					&ppComponents, &size);
-	
-			
 
 			if (ret == CCSP_SUCCESS && size == 1) 
 			{
@@ -578,7 +578,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			return ret;
 		}
 
-		//Identify the rario and apply settings
+		//Identify the radio and apply settings
 		if(bRadioRestartEn)
 		{
 			bRadioRestartEn = FALSE;
@@ -610,10 +610,9 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				WalError("Failed to Set Apply Settings\n");
 			}
 		}
+		 free_componentStruct_t(bus_handle, size, ppComponents);
 
 	}
-	
-	free_componentStruct_t(bus_handle, size, ppComponents);
 	free_set_param_values_memory(val,paramCount,faultParam);
 	
 	return ret;
