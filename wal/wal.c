@@ -436,6 +436,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 	int ret=0, size = 0, cnt = 0, cnt1=0;
 	componentStruct_t ** ppComponents = NULL;
 	char CompName[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
 	BOOL bRadioRestartEn = (BOOL)FALSE;
 
@@ -520,15 +521,16 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			return ret;
 		}
 		strcpy(CompName, ppComponents[0]->componentName);
-		WalPrint("CompName = %s,paramCount = %d\n", CompName,paramCount);
+		strcpy(dbusPath, ppComponents[0]->dbusPath);
+		WalPrint("CompName = %s, dbusPath : %s, paramCount = %d\n", CompName, dbusPath,paramCount);
 		if(!strcmp(CompName,"eRT.com.cisco.spvtg.ccsp.wifi")) 
 		{
 			bRadioRestartEn = TRUE;
 		}
-        free_componentStruct_t(bus_handle, size, ppComponents);
 
 		for (cnt = 0; cnt < paramCount; cnt++) 
 		{
+			free_componentStruct_t(bus_handle, size, ppComponents);
 			strcpy(paramName, paramVal[cnt].name);
 			IndexMpa_WEBPAtoCPE(paramName);
 
@@ -568,7 +570,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			} 			
 		}
 		
-		ret = CcspBaseIf_setParameterValues(bus_handle,ppComponents[0]->componentName, ppComponents[0]->dbusPath, 0,CCSP_COMPONENT_ID_WebPA, val, paramCount, TRUE, &faultParam);
+		ret = CcspBaseIf_setParameterValues(bus_handle,CompName, dbusPath, 0,CCSP_COMPONENT_ID_WebPA, val, paramCount, TRUE, &faultParam);
 		
 		if (ret != CCSP_SUCCESS && faultParam) 
 		{
@@ -602,9 +604,9 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				RadApplyParam = &val_set[2];
 				nreq = 2;
 			}
+			
+			ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, CCSP_COMPONENT_ID_WebPA,	RadApplyParam, nreq, TRUE,&faultParam);
 
-			ret = CcspBaseIf_setParameterValues(bus_handle, ppComponents[0]->componentName, ppComponents[0]->dbusPath,
-				0, CCSP_COMPONENT_ID_WebPA,	RadApplyParam, nreq, TRUE,&faultParam);
 			if (ret != CCSP_SUCCESS && faultParam) 
 			{
 				WalError("Failed to Set Apply Settings\n");
