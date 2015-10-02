@@ -33,7 +33,7 @@ typedef struct
 /*----------------------------------------------------------------------------*/
 /*                            File Scoped Variables                           */
 /*----------------------------------------------------------------------------*/
-void (*fp_stack)(ParamNotify*);
+void (*notifyCbFn)(ParamNotify*) = NULL;
 static char *CcspDmlName[WIFI_PARAM_MAP_SIZE] = {"Device.WiFi.Radio", "Device.WiFi.SSID", "Device.WiFi.AccessPoint"};
 static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 {10000, 1},
@@ -61,6 +61,7 @@ static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 /*----------------------------------------------------------------------------*/
 static WAL_STATUS mapStatus(int ret);
 static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size,void* user_data);
+static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID);
 static int getParamValues(char *pParameterName, ParamVal ***parametervalArr,int *TotalParams);
 static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalParams);
 static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned int isAtomic, int * setRet);
@@ -70,7 +71,6 @@ static void free_set_param_values_memory(parameterValStruct_t* val, int paramCou
 static void identifyRadioIndexToReset(int paramCount, parameterValStruct_t* val,BOOL *bRestartRadio1,BOOL *bRestartRadio2);
 static void IndexMpa_WEBPAtoCPE(char *pParameterName);
 static void IndexMpa_CPEtoWEBPA(char **ppParameterName);
-
 
 extern ANSC_HANDLE bus_handle;
 
@@ -85,7 +85,7 @@ extern ANSC_HANDLE bus_handle;
  */
 WAL_STATUS RegisterNotifyCB(notifyCB cb)
 {
-	fp_stack = cb;
+	notifyCbFn = cb;
 	return WAL_SUCCESS;
 }
 
@@ -250,11 +250,46 @@ static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* u
 	paramNotify.oldValue= val->oldValue;
 	paramNotify.newValue = val->newValue;
 	paramNotify.type = val->type;
-	paramNotify.writeID = val->writeID;
+	paramNotify.changeSource = mapWriteID(val->writeID);
 	
-	WalPrint("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Write ID: %d\n", paramNotify.paramName, paramNotify.oldValue, paramNotify.newValue, paramNotify.type, paramNotify.writeID);
-	
-	(*fp_stack)(&paramNotify);
+	WalPrint("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Write ID: %d\n", paramNotify.paramName, paramNotify.oldValue, paramNotify.newValue, paramNotify.type, paramNotify.changeSource);
+
+	if(notifyCbFn != NULL)
+	{
+		(*notifyCbFn)(&paramNotify);
+	}
+}
+
+static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID)
+{
+	PARAMVAL_CHANGE_SOURCE source;
+	WalPrint("Inside mapWriteID\n");
+	WalPrint("WRITE ID is %d\n", writeID);
+
+	switch(writeID)
+	{
+		case CCSP_COMPONENT_ID_ACS:
+			source = CHANGED_BY_ACS;
+			break;
+		case CCSP_COMPONENT_ID_WebPA:
+			source = CHANGED_BY_WEBPA;
+			break;
+		case CCSP_COMPONENT_ID_CLI:
+			source = CHANGED_BY_CLI;
+			break;
+		case CCSP_COMPONENT_ID_SNMP:
+			source = CHANGED_BY_SNMP;
+			break;
+		case CCSP_COMPONENT_ID_WebUI:
+			source = CHANGED_BY_WEBUI;
+			break;
+		default:
+			source = CHANGED_BY_UNKNOWN;
+			break;
+	}
+
+	WalPrint("CMC/component_writeID is: %d\n", source);
+	return source;
 }
 
 /**
