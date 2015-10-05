@@ -21,6 +21,7 @@
 #define MAX_DBUS_INTERFACE_LEN					32
 #define MAX_PATHNAME_CR_LEN						64
 #define CCSP_COMPONENT_ID_WebPA    				0x0000000A
+#define CCSP_COMPONENT_ID_XPC    				0x0000000B
 /*----------------------------------------------------------------------------*/
 /*                               Data Structures                              */
 /*----------------------------------------------------------------------------*/
@@ -64,7 +65,7 @@ static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size,void* us
 static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID);
 static int getParamValues(char *pParameterName, ParamVal ***parametervalArr,int *TotalParams);
 static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalParams);
-static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned int isAtomic, int * setRet);
+static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType, int * setRet);
 static int setParamAttributes(const char *pParameterName, const AttrVal *attArr);
 static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *paramVal, char *paramName);
 static void free_set_param_values_memory(parameterValStruct_t* val, int paramCount, char * faultParam);
@@ -135,22 +136,23 @@ void getAttributes(const char *paramName[], const unsigned int paramCount, AttrV
 }
 
 /**
- * @brief setValues Returns the status from stack for SET request
+ * @brief setValues Sets the parameter value
  *
  * @param[in] paramName parameter Name
  * @param[in] paramCount Number of parameters
- * @param[in] isAtomic set for atomic set
+ * @param[in] setType Set operation type
  * @param[out] retStatus Returns parameter Value from the stack
  */
 
-void setValues(const ParamVal paramVal[], const unsigned int paramCount, const unsigned int isAtomic, WAL_STATUS *retStatus)
+void setValues(const ParamVal paramVal[], const unsigned int paramCount, const WEBPA_SET_TYPE setType, WAL_STATUS *retStatus)
 {
 	int cnt = 0, ret = 0;
 	int * setRet = (int *) malloc(sizeof(int) * paramCount);
-	ret = setParamValues(paramVal,paramCount,isAtomic,setRet);
+	ret = setParamValues(paramVal, paramCount, setType, setRet);
+
 	for (cnt = 0; cnt < paramCount; cnt++) 
 	{
-		if(isAtomic)
+		if(setType != WEBPA_SET)
 		{
 			retStatus[cnt] = mapStatus(ret);
 		}
@@ -245,18 +247,18 @@ static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* u
 {
 	WalPrint("Inside CcspWebpaValueChangedCB\n");
 
-	ParamNotify paramNotify;
-	paramNotify.paramName = val->parameterName;
-	paramNotify.oldValue= val->oldValue;
-	paramNotify.newValue = val->newValue;
-	paramNotify.type = val->type;
-	paramNotify.changeSource = mapWriteID(val->writeID);
-	
-	WalPrint("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Write ID: %d\n", paramNotify.paramName, paramNotify.oldValue, paramNotify.newValue, paramNotify.type, paramNotify.changeSource);
+	ParamNotify *paramNotify = (ParamNotify *) malloc(sizeof(ParamNotify));
+	paramNotify->paramName = val->parameterName;
+	paramNotify->oldValue= val->oldValue;
+	paramNotify->newValue = val->newValue;
+	paramNotify->type = val->type;
+	paramNotify->changeSource = mapWriteID(val->writeID);
+
+	WalPrint("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Write ID: %d\n", paramNotify->paramName, paramNotify->oldValue, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
 
 	if(notifyCbFn != NULL)
 	{
-		(*notifyCbFn)(&paramNotify);
+		(*notifyCbFn)(paramNotify);
 	}
 }
 
@@ -273,6 +275,9 @@ static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID)
 			break;
 		case CCSP_COMPONENT_ID_WebPA:
 			source = CHANGED_BY_WEBPA;
+			break;
+		case CCSP_COMPONENT_ID_XPC:
+			source = CHANGED_BY_XPC;
 			break;
 		case CCSP_COMPONENT_ID_CLI:
 			source = CHANGED_BY_CLI;
@@ -460,10 +465,10 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
  *
  * @param[in] paramVal parameter value Array
  * @param[in] paramCount Number of parameters
- * @param[in] isAtomic set for atomic set
+ * @param[in] setType set for atomic set
  */
 
-static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned int isAtomic,int * setRet)
+static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType, int * setRet)
 {
 	char* faultParam = NULL;
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
@@ -474,6 +479,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
 	BOOL bRadioRestartEn = (BOOL)FALSE;
+	unsigned int writeID = CCSP_COMPONENT_ID_WebPA;
 
 	//parameters for atomic 
 	BOOL bRestartRadio1 = FALSE;
@@ -488,7 +494,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 					{ "Device.WiFi.Radio.2.X_CISCO_COM_ApplySetting", "true", ccsp_boolean}};
 	parameterValStruct_t* val = (parameterValStruct_t*) malloc(sizeof(parameterValStruct_t) * paramCount);
 	
-	if(!isAtomic)
+	if(setType == WEBPA_SET)
 	{
 		for (cnt = 0; cnt < paramCount; cnt++) 
 		{
@@ -510,7 +516,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 					continue;
 				}
 
-				ret = CcspBaseIf_setParameterValues(bus_handle,	ppComponents[0]->componentName, ppComponents[0]->dbusPath, 					0,CCSP_COMPONENT_ID_WebPA, &val[cnt], 1, TRUE, &faultParam);
+				ret = CcspBaseIf_setParameterValues(bus_handle,	ppComponents[0]->componentName, ppComponents[0]->dbusPath, 0, CCSP_COMPONENT_ID_WebPA, &val[cnt], 1, TRUE, &faultParam);
 
 				if (ret != CCSP_SUCCESS && faultParam)
 				{
@@ -605,8 +611,8 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 			} 			
 		}
 		
-		ret = CcspBaseIf_setParameterValues(bus_handle,CompName, dbusPath, 0,CCSP_COMPONENT_ID_WebPA, val, paramCount, TRUE, &faultParam);
-		
+		writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
+		ret = CcspBaseIf_setParameterValues(bus_handle,CompName, dbusPath, 0, writeID, val, paramCount, TRUE, &faultParam);
 		if (ret != CCSP_SUCCESS && faultParam) 
 		{
 			WalError("Error:Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
@@ -639,9 +645,9 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const unsigned in
 				RadApplyParam = &val_set[2];
 				nreq = 2;
 			}
-			
-			ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, CCSP_COMPONENT_ID_WebPA,	RadApplyParam, nreq, TRUE,&faultParam);
 
+			writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
+			ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, RadApplyParam, nreq, TRUE,&faultParam);
 			if (ret != CCSP_SUCCESS && faultParam) 
 			{
 				WalError("Failed to Set Apply Settings\n");
@@ -813,7 +819,7 @@ static void identifyRadioIndexToReset(int paramCount, parameterValStruct_t* val,
 }
 
 /**
- * @brief setParamValues Returns the status from stack for SET request
+ * @brief setParamAttributes Sets the parameter attribute value
  * @param[in] pParameterName parameter name
  * @param[in] attArr attribute value Array
  */
