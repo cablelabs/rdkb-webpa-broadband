@@ -493,6 +493,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 					{ "Device.WiFi.Radio.2.X_CISCO_COM_ApplySettingSSID","2", ccsp_int},
 					{ "Device.WiFi.Radio.2.X_CISCO_COM_ApplySetting", "true", ccsp_boolean}};
 	parameterValStruct_t* val = (parameterValStruct_t*) malloc(sizeof(parameterValStruct_t) * paramCount);
+	memset(val,0,(sizeof(parameterValStruct_t) * paramCount));
 	
 	if(setType == WEBPA_SET)
 	{
@@ -537,7 +538,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 			else 
 			{
 				setRet[cnt] = ret;
-				WalError("Error: Parameter name is not supported.ret : %d\n", ret);
+				WalError("Error: Parameter name %s is not supported.ret : %d\n", paramName, ret);
 				free_componentStruct_t(bus_handle, size, ppComponents);
 				continue;
 			} 			
@@ -552,7 +553,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 				&ppComponents, &size);
 		if(ret != CCSP_SUCCESS)
 		{
-			WalError("Error: Parameter name is not supported.ret : %d\n", ret);
+			WalError("Error: Parameter name %s is not supported.ret : %d\n", paramName, ret);
 			if (val) 
 			{
 				free(val);
@@ -585,11 +586,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 				{
 					WalError("Error: Parameters does not belong to the same component\n");
 					free_componentStruct_t(bus_handle, size, ppComponents);
-					if (val) 
-					{
-						free(val);
-					}
-					val = NULL;
+					free_set_param_values_memory(val,paramCount,faultParam);
 					return CCSP_FAILURE;
 				}
 				
@@ -604,7 +601,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 			}
 			else 
 			{
-				WalError("Error: Parameter name is not supported.ret : %d\n", ret);
+				WalError("Error: Parameter name %s is not supported.ret : %d\n", paramName, ret);
 				free_componentStruct_t(bus_handle, size, ppComponents);
 				free_set_param_values_memory(val,paramCount,faultParam);
 				return ret;
