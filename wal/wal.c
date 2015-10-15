@@ -279,7 +279,7 @@ static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID)
 		case CCSP_COMPONENT_ID_XPC:
 			source = CHANGED_BY_XPC;
 			break;
-		case CCSP_COMPONENT_ID_CLI:
+		case DSLH_MPA_ACCESS_CONTROL_CLIENTTOOL:
 			source = CHANGED_BY_CLI;
 			break;
 		case CCSP_COMPONENT_ID_SNMP:
