@@ -162,11 +162,7 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
 		}
 	}
 	
-	if(setRet)
-	{
-		free(setRet);
-	}
-	setRet = NULL;
+	WAL_FREE(setRet);
 }
 
 /**
@@ -341,7 +337,7 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 			parametervalError->type = ccsp_string;
 			parametervalArr[0][0] = parametervalError;
 			*TotalParams = 1;
-			WalError("Error:Failed to GetValue for param: %s ret: %d\n", paramName, ret);
+			WalError("Failed to GetValue for param: %s ret: %d\n", paramName, ret);
 
 		}
 		else
@@ -354,11 +350,7 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 				parametervalArr[0][i] = parameterval[i];
 				WalPrint("success: %s %s %d \n",parametervalArr[0][i]->name,parametervalArr[0][i]->value,parametervalArr[0][i]->type);
 			}
-			if(parameterval)
-			 {
-			 	free(parameterval);
-			 }
-			 parameterval = NULL;
+			WAL_FREE(parameterval);
 		}
 	}
 	else
@@ -371,7 +363,7 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 		parametervalError->type = ccsp_string;
 		parametervalArr[0][0] = parametervalError;
 		*TotalParams = 1;
-		WalError("Error: Parameter name is not supported.ret : %d\n", ret);
+		WalError("Parameter name is not supported.ret : %d\n", ret);
 	}
 	free_componentStruct_t(bus_handle, size, ppComponents);
 	return ret;
@@ -423,7 +415,7 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 			strcpy(attr[0][0]->name, pParameterName);
 			attr[0][0]->type = WAL_INT;
 			*TotalParams = 1;
-			WalError("Error:Failed to GetValue for GetParamAttr ret : %d \n", ret);
+			WalError("Failed to GetValue for GetParamAttr ret : %d \n", ret);
 		}
 		else
 		{
@@ -455,7 +447,7 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 		strcpy(attr[0][0]->name, pParameterName);
 		attr[0][0]->type = WAL_INT;
 		*TotalParams = 1;
-		WalError("Error: Parameter name is not supported.ret : %d\n", ret);
+		WalError("Parameter name is not supported.ret : %d\n", ret);
 	}
 	return ret;
 }
@@ -512,7 +504,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 				if(ret)
 				{
 					setRet[cnt] = ret;
-					WalError("Error:Preparing parameter value struct is failed. \n");
+					WalError("Preparing parameter value struct is failed. \n");
 					free_componentStruct_t(bus_handle, size, ppComponents);
 					continue;
 				}
@@ -522,12 +514,8 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 				if (ret != CCSP_SUCCESS && faultParam)
 				{
 					setRet[cnt] = ret;
-					WalError("Error:Failed to SetValue for param  '%s' ret : %d \n", faultParam, ret);
-					if (faultParam) 
-					{
-						free(faultParam);
-					}
-					faultParam = NULL;
+					WalError("Failed to SetValue for param  '%s' ret : %d \n", faultParam, ret);
+					WAL_FREE(faultParam);
 					free_componentStruct_t(bus_handle, size, ppComponents);
 					continue;
 				}
@@ -538,7 +526,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 			else 
 			{
 				setRet[cnt] = ret;
-				WalError("Error: Parameter name %s is not supported.ret : %d\n", paramName, ret);
+				WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
 				free_componentStruct_t(bus_handle, size, ppComponents);
 				continue;
 			} 			
@@ -553,12 +541,8 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 				&ppComponents, &size);
 		if(ret != CCSP_SUCCESS)
 		{
-			WalError("Error: Parameter name %s is not supported.ret : %d\n", paramName, ret);
-			if (val) 
-			{
-				free(val);
-			}
-			val = NULL;
+			WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
+			WAL_FREE(val);
 			free_componentStruct_t(bus_handle, size, ppComponents);
 			return ret;
 		}
@@ -572,47 +556,24 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 
 		for (cnt = 0; cnt < paramCount; cnt++) 
 		{
-			free_componentStruct_t(bus_handle, size, ppComponents);
 			strcpy(paramName, paramVal[cnt].name);
 			IndexMpa_WEBPAtoCPE(paramName);
 
-			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle, dst_pathname_cr, paramName, l_Subsystem,
-					&ppComponents, &size);
-
-			if (ret == CCSP_SUCCESS && size == 1) 
+			ret = prepare_parameterValueStruct(&val[cnt], &paramVal[cnt], paramName);
+			if(ret)
 			{
-			
-				if (strcmp(CompName, ppComponents[0]->componentName) != 0)
-				{
-					WalError("Error: Parameters does not belong to the same component\n");
-					free_componentStruct_t(bus_handle, size, ppComponents);
-					free_set_param_values_memory(val,paramCount,faultParam);
-					return CCSP_FAILURE;
-				}
-				
-				ret = prepare_parameterValueStruct(&val[cnt], &paramVal[cnt], paramName);
-				if(ret)
-				{
-					WalError("Error:Preparing parameter value struct is Failed \n");
-					free_componentStruct_t(bus_handle, size, ppComponents);
-					free_set_param_values_memory(val,paramCount,faultParam);
-					return ret;
-				}
-			}
-			else 
-			{
-				WalError("Error: Parameter name %s is not supported.ret : %d\n", paramName, ret);
+				WalError("Preparing parameter value struct is Failed \n");
 				free_componentStruct_t(bus_handle, size, ppComponents);
 				free_set_param_values_memory(val,paramCount,faultParam);
 				return ret;
-			} 			
+			}
 		}
 		
 		writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
 		ret = CcspBaseIf_setParameterValues(bus_handle,CompName, dbusPath, 0, writeID, val, paramCount, TRUE, &faultParam);
 		if (ret != CCSP_SUCCESS && faultParam) 
 		{
-			WalError("Error:Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
+			WalError("Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
 			free_componentStruct_t(bus_handle, size, ppComponents);
 			free_set_param_values_memory(val,paramCount,faultParam);
 			return ret;
@@ -670,25 +631,13 @@ static void free_set_param_values_memory(parameterValStruct_t* val, int paramCou
 {
 	WalPrint("Inside free_set_param_values_memory\n");	
 	int cnt1 = 0;
-	if (faultParam) 
-	{
-		free(faultParam);
-	}		
-	faultParam = NULL;
+	WAL_FREE(faultParam);
 
 	for (cnt1 = 0; cnt1 < paramCount; cnt1++) 
 	{
-		if (val[cnt1].parameterName) 
-		{
-			free(val[cnt1].parameterName);
-		}
-		val[cnt1].parameterName = NULL;
-	}	
-	if (val) 
-	{
-		free(val);
+		WAL_FREE(val[cnt1].parameterName);
 	}
-	val = NULL;
+	WAL_FREE(val);
 }
 
 /**
@@ -863,14 +812,14 @@ static int setParamAttributes(const char *pParameterName, const AttrVal *attArr)
 
 		if (CCSP_SUCCESS != ret)
 		{
-			WalError("Error: Failed to SetValue for SetParamAttr ret : %d \n", ret);
+			WalError("Failed to SetValue for SetParamAttr ret : %d \n", ret);
 		}
 
 		free_componentStruct_t(bus_handle, size, ppComponents);
 	}
 	else
 	{
-		WalError("Error: Component name is not supported ret : %d\n", ret);
+		WalError("Component name is not supported ret : %d\n", ret);
 	}
 
 	return ret;
@@ -982,7 +931,7 @@ static void IndexMpa_CPEtoWEBPA(char **ppParameterName)
 							sprintf(pDmIntString, "%s.%d%s", CcspDmlName[i],
 									IndexMap[j].WebPaInstanceNumber,
 									restDmlString);
-							free(pParameterName);
+							WAL_FREE(pParameterName);
 							*ppParameterName = pDmIntString;
 							return;
 						}
