@@ -38,6 +38,7 @@ int main()
 	const char *pComponentName = WEBPA_COMPONENT_NAME;
 	WalInfo("********** Starting component: %s **********\n ", pComponentName); 
 	msgBusInit(pComponentName);
+	WALInit();
 	createSocketConnection();
 	while(1);
 	return 1;
