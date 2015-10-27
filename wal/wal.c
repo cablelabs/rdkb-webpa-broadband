@@ -227,7 +227,8 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		   	ParamGroup[0].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
 			strcpy(ParamGroup[0].dbus_path, dbusPath);
 
-			ParamGroup[0].parameterName = (char **) malloc(sizeof(char *) * 1);			   
+			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)
+			ParamGroup[0].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));			   
 		   	ParamGroup[0].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
 		   	strcpy(ParamGroup[0].parameterName[0],paramName[cnt1]);
 
@@ -246,7 +247,6 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 					subParamCount =  ParamGroup[cnt2].parameterCount;
 					WalPrint("subParamCount :%d\n",subParamCount);
 				
-					ParamGroup[cnt2].parameterName = (char **) realloc(ParamGroup[cnt2].parameterName,sizeof(char *) * subParamCount);				
 					ParamGroup[cnt2].parameterName[subParamCount-1] = (char *) malloc(MAX_PARAMETERNAME_LEN);
 						
 					strcpy(ParamGroup[cnt2].parameterName[subParamCount-1],paramName[cnt1]);
@@ -266,8 +266,9 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 				strcpy(ParamGroup[compCount].comp_name, compName);
 		      	ParamGroup[compCount].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
 				strcpy(ParamGroup[compCount].dbus_path, dbusPath);
-				  
-		      	ParamGroup[compCount].parameterName = (char **) malloc(sizeof(char *) * 1);
+
+			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)	  
+		      	ParamGroup[compCount].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));
 		        ParamGroup[compCount].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
 		      	strcpy(ParamGroup[compCount].parameterName[0],paramName[cnt1]);
 				      
@@ -315,7 +316,12 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 	free_ParamCompList(ParamGroup, compCount);
 }
 
-// To Free ParamCompList
+/**
+ * @brief To free allocated memory for ParamCompList
+ *
+ * @param[in] ParamGroup ParamCompList formed during GET request to group parameters based on components
+ * @param[in] compCount number of components  
+ */
 static void free_ParamCompList(ParamCompList *ParamGroup, int compCount)
 {
 	int cnt1 = 0, cnt2 = 0;
@@ -589,6 +595,18 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 }
 
 
+/**
+ * @brief getAtomicParamValues Returns the parameter Values from stack for GET request in atomic way.
+ * This is optimized as it fetches component from pre-populated ComponentValArray and does bulk GET 
+ * for parameters belonging to same component
+ *
+ * @param[in] parameterNames parameter Names List
+ * @param[in] paramCount number of parameters
+ * @param[in] CompName Component Name of parameters
+ * @param[in] dbusPath Dbus Path of component
+ * @param[out] paramValArr parameter value Array
+ * @param[in] startIndex starting array index to fill the output paramValArr
+ */
 static int getAtomicParamValues(char *parameterNames[], int paramCount, char *CompName, char *dbusPath, ParamVal ***parametervalArr, int startIndex)
 {
 	int ret = 0, val_size = 0, cnt=0;
@@ -628,9 +646,7 @@ static int getAtomicParamValues(char *parameterNames[], int paramCount, char *Co
 		}
 		else
 		{
-			WalPrint("Before realloc in getAtomicParamValues\n");
 			parametervalArr[0] = (ParamVal **) realloc(parametervalArr[0],sizeof(ParamVal*) * (startIndex + val_size));
-			WalPrint("After realloc in getAtomicParamValues\n");
 		}
 		for (cnt = 0; cnt < val_size; cnt++)
 		{
@@ -1229,6 +1245,12 @@ static void IndexMpa_CPEtoWEBPA(char **ppParameterName)
 	return;
 }
 
+/**
+ * @brief getMatchingComponentValArrayIndex Compare objectName with the pre-populated ComponentValArray and return matching index
+ *
+ * param[in] objectName 
+ * @return matching ComponentValArray index
+ */
 static int getMatchingComponentValArrayIndex(char *objectName)
 {
 	int i =0,index=-1;
@@ -1244,6 +1266,12 @@ static int getMatchingComponentValArrayIndex(char *objectName)
 	return index;
 }
 
+/**
+ * @brief getObjectName Get object name from parameter name. Example WiFi from "Device.WiFi.SSID."
+ *
+ * @param[in] str Parameter Name
+ * param[out] objectName Set with the object name
+ */
 static void getObjectName(char *str, char *objectName)
 {
 	WalPrint("Inside getObjectName input str %s\n", str);
@@ -1265,6 +1293,47 @@ static void getObjectName(char *str, char *objectName)
 	}
 }
 
+
+/**
+ * @brief LOGInit Initialize RDK Logger
+ */
+void LOGInit()
+{
+	#ifdef FEATURE_SUPPORT_RDKLOG
+		rdk_logger_init("/fss/gw/lib/debug.ini");    /* RDK logger initialization*/
+	#endif
+}
+
+
+/**
+ * @brief _WEBPA_LOG WEBPA RDK Logger API
+ *
+ * @param[in] level LOG Level
+ * @param[in] msg Message to be logged 
+ */
+void _WEBPA_LOG(unsigned int level,const char *msg, ...)
+{       
+        va_list arg;
+        char*   pTempChar = (char*)malloc(4096);
+	int ret = 0;
+ 
+        if ( pTempChar && (level <= 4) )                                                             
+        {                                                                            
+                va_start(arg, msg);					 
+                ret = vsnprintf(pTempChar,4096,msg,arg);
+		if(ret < 0)
+		{
+			perror(pTempChar);
+		}
+                va_end(arg);
+                RDK_LOG(level,"LOG.RDK.WEBPA",pTempChar);
+                free(pTempChar);                                                                       
+        }        
+}
+
+/**
+ * @brief WALInit Initialize WAL
+ */
 void WALInit()
 {
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };

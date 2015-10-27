@@ -8,11 +8,15 @@ include $(CCSP_ROOT_DIR)/arch/ccsp_common.mk
 INCPATH += $(CCSP_ROOT_DIR)/hal/include
 INCPATH += $(CCSP_ROOT_DIR)/webpa/include
 INCPATH += $(CCSP_ROOT_DIR)/webpa/source/wal/wal/include
+INCPATH += $(CCSP_ROOT_DIR)/../generic/rdk_logger/include/
 
 CFLAGS += $(addprefix -I, $(INCPATH))
 
 
 CFLAGS += -Wall
+CFLAGS += -DFEATURE_SUPPORT_RDKLOG
+CFLAGS += "-DPLATFORM_RDKB"
+LDFLAGS    += -L$(CCSP_OPENSOURCE_DIR)/lib -L$(CCSP_OUT_DIR)/../../lib/ -lrdkloggers -L$(CCSP_OUT_DIR)/../../lib/ -llog4c
 LDFLAGS+= -lccsp_common -lm -lpthread 
 
 target := $(ComponentBuildDir)/libwal.so
