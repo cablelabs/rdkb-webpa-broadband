@@ -22,6 +22,9 @@ static void sig_handler(int sig);
 /*----------------------------------------------------------------------------*/
 int main()
 {
+	// Initialize logger
+	LOGInit();
+
 	signal(SIGTERM, sig_handler);
 	signal(SIGINT, sig_handler);
 	signal(SIGUSR1, sig_handler);
