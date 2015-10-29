@@ -125,12 +125,12 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr,int 
 static int getAtomicParamValues(char *pParameterName[], int paramCount, char *CompName, char *dbusPath, ParamVal ***parametervalArr, int startIndex);
 static void free_ParamCompList(ParamCompList *ParamGroup, int compCount);
 static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalParams);
-static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType, int * setRet);
+static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType);
 static int setParamAttributes(const char *pParameterName, const AttrVal *attArr);
 static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *paramVal, char *paramName);
 static void free_set_param_values_memory(parameterValStruct_t* val, int paramCount, char * faultParam);
 static void identifyRadioIndexToReset(int paramCount, parameterValStruct_t* val,BOOL *bRestartRadio1,BOOL *bRestartRadio2);
-static void IndexMpa_WEBPAtoCPE(char *pParameterName);
+static int IndexMpa_WEBPAtoCPE(char *pParameterName);
 static void IndexMpa_CPEtoWEBPA(char **ppParameterName);
 static int getMatchingComponentValArrayIndex(char *objectName);
 static void getObjectName(char *str, char *objectName);
@@ -164,7 +164,7 @@ WAL_STATUS RegisterNotifyCB(notifyCB cb)
 void getValues(const char *paramName[], const unsigned int paramCount, ParamVal ***paramValArr,
 		int *retValCount, WAL_STATUS *retStatus)
 {
-	int cnt1=0, cnt2=0, compCount=0, matchFlag=0, subParamCount=0, ret = -1, startIndex = 0,size = 0, error = 0;
+	int cnt1=0, cnt2=0, compCount=0, matchFlag=0, subParamCount=0, ret = -1, startIndex = 0,size = 0, error = 0, retIndex=0;
 	char parameterName[MAX_PARAMETERNAME_LEN] = {'\0'};
 	char objectName[MAX_PARAMETERNAME_LEN] = {'\0'};
 	ParamCompList *ParamGroup = NULL;
@@ -192,7 +192,14 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 			// GET Component for parameter from stack
 			WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
 			strcpy(parameterName,paramName[cnt1]);
-			IndexMpa_WEBPAtoCPE(parameterName);
+			retIndex = IndexMpa_WEBPAtoCPE(parameterName);
+			if(retIndex == -1)
+			{
+				ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+				WalError("Parameter name is not supported, invalid index. ret = %d\n", ret);
+				error = 1;
+				break;
+			}
 			WalPrint("Get component for parameterName : %s from stack\n",parameterName);
 
 			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
@@ -203,10 +210,12 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 			{	
 				strcpy(compName,ppComponents[0]->componentName);
 				strcpy(dbusPath,ppComponents[0]->dbusPath);
+				free_componentStruct_t(bus_handle, size, ppComponents);
 			}
 			else
 			{
-				WalError("Parameter name is not supported. ret = %d\n", ret);
+				WalError("Parameter name %s is not supported. ret = %d\n", parameterName, ret);
+				free_componentStruct_t(bus_handle, size, ppComponents);
 				error = 1;
 				break;
 			}
@@ -267,7 +276,7 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		      	ParamGroup[compCount].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
 				strcpy(ParamGroup[compCount].dbus_path, dbusPath);
 
-			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)	  
+				// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)	  
 		      	ParamGroup[compCount].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));
 		        ParamGroup[compCount].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
 		      	strcpy(ParamGroup[compCount].parameterName[0],paramName[cnt1]);
@@ -372,22 +381,12 @@ void getAttributes(const char *paramName[], const unsigned int paramCount, AttrV
 void setValues(const ParamVal paramVal[], const unsigned int paramCount, const WEBPA_SET_TYPE setType, WAL_STATUS *retStatus)
 {
 	int cnt = 0, ret = 0;
-	int * setRet = (int *) malloc(sizeof(int) * paramCount);
-	ret = setParamValues(paramVal, paramCount, setType, setRet);
+	ret = setParamValues(paramVal, paramCount, setType);
 
 	for (cnt = 0; cnt < paramCount; cnt++) 
 	{
-		if(setType != WEBPA_SET)
-		{
-			retStatus[cnt] = mapStatus(ret);
-		}
-		else
-		{
-			retStatus[cnt] = mapStatus(setRet[cnt]);
-		}
+		retStatus[cnt] = mapStatus(ret);
 	}
-	
-	WAL_FREE(setRet);
 }
 
 /**
@@ -475,7 +474,7 @@ static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* u
 	paramNotify->type = val->type;
 	paramNotify->changeSource = mapWriteID(val->writeID);
 
-	WalInfo("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Write ID: %d\n", paramNotify->paramName, paramNotify->oldValue, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
+	WalInfo("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Change Source: %d\n", paramNotify->paramName, paramNotify->oldValue, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
 
 	if(notifyCbFn != NULL)
 	{
@@ -609,13 +608,15 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
  */
 static int getAtomicParamValues(char *parameterNames[], int paramCount, char *CompName, char *dbusPath, ParamVal ***parametervalArr, int startIndex)
 {
-	int ret = 0, val_size = 0, cnt=0;
+	int ret = 0, val_size = 0, cnt=0, retIndex=0, error=0;
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
 	char **parameterNamesLocal = NULL;
 	parameterValStruct_t **parameterval = NULL;
 
 	WalPrint(" ------ Start of getAtomicParamValues ----\n");
 	parameterNamesLocal = (char **) malloc(sizeof(char *) * paramCount);
+	memset(parameterNamesLocal,0,(sizeof(char *) * paramCount));
+
 	// Initialize names array with converted index	
 	for (cnt = 0; cnt < paramCount; cnt++)
 	{
@@ -624,39 +625,49 @@ static int getAtomicParamValues(char *parameterNames[], int paramCount, char *Co
 		parameterNamesLocal[cnt] = (char *) malloc(sizeof(char) * (strlen(parameterNames[cnt]) + 1));
 		strcpy(parameterNamesLocal[cnt],parameterNames[cnt]);
 
-		IndexMpa_WEBPAtoCPE(parameterNamesLocal[cnt]);
+		retIndex=IndexMpa_WEBPAtoCPE(parameterNamesLocal[cnt]);
+		if(retIndex == -1)
+		{
+		 	ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+		 	WalError("Parameter name is not supported, invalid index. ret = %d\n", ret);
+			error = 1;
+			break;
+		}
 
 		WalPrint("After parameterNamesLocal[%d] : %s\n",cnt,parameterNamesLocal[cnt]);
 	}
 	
-	WalPrint("CompName = %s, dbusPath : %s, paramCount = %d\n", CompName, dbusPath, paramCount);
- 
-	ret = CcspBaseIf_getParameterValues(bus_handle,CompName,dbusPath,parameterNamesLocal,paramCount, &val_size, &parameterval);
-	WalPrint("----- After GPA ret = %d------\n",ret);
-	if (ret != CCSP_SUCCESS)
+	if(error != 1)
 	{
-		WalError("Error:Failed to GetValue for parameters ret: %d\n", ret);
-	}
-	else
-	{
-		WalPrint("val_size : %d\n",val_size);
-		if(startIndex == 0)
+		WalPrint("CompName = %s, dbusPath : %s, paramCount = %d\n", CompName, dbusPath, paramCount);
+	 
+		ret = CcspBaseIf_getParameterValues(bus_handle,CompName,dbusPath,parameterNamesLocal,paramCount, &val_size, &parameterval);
+		WalPrint("----- After GPA ret = %d------\n",ret);
+		if (ret != CCSP_SUCCESS)
 		{
-			parametervalArr[0] = (ParamVal **) malloc(sizeof(ParamVal*) * val_size);
+			WalError("Error:Failed to GetValue for parameters ret: %d\n", ret);
 		}
 		else
 		{
-			parametervalArr[0] = (ParamVal **) realloc(parametervalArr[0],sizeof(ParamVal*) * (startIndex + val_size));
-		}
-		for (cnt = 0; cnt < val_size; cnt++)
-		{
-			WalPrint("cnt+startIndex : %d\n",cnt+startIndex);
-			IndexMpa_CPEtoWEBPA(&parameterval[cnt]->parameterName);
-			parametervalArr[0][cnt+startIndex] = parameterval[cnt];
-			WalPrint("success: %s %s %d \n",parametervalArr[0][cnt+startIndex]->name,parametervalArr[0][cnt+startIndex]->value,parametervalArr[0][cnt+startIndex]->type);
-		}
+			WalPrint("val_size : %d\n",val_size);
+			if(startIndex == 0)
+			{
+				parametervalArr[0] = (ParamVal **) malloc(sizeof(ParamVal*) * val_size);
+			}
+			else
+			{
+				parametervalArr[0] = (ParamVal **) realloc(parametervalArr[0],sizeof(ParamVal*) * (startIndex + val_size));
+			}
+			for (cnt = 0; cnt < val_size; cnt++)
+			{
+				WalPrint("cnt+startIndex : %d\n",cnt+startIndex);
+				IndexMpa_CPEtoWEBPA(&parameterval[cnt]->parameterName);
+				parametervalArr[0][cnt+startIndex] = parameterval[cnt];
+				WalPrint("success: %s %s %d \n",parametervalArr[0][cnt+startIndex]->name,parametervalArr[0][cnt+startIndex]->value,parametervalArr[0][cnt+startIndex]->type);
+			}
 
-		WAL_FREE(parameterval);
+			WAL_FREE(parameterval);
+		}	
 	}
 		
 	for (cnt = 0; cnt < paramCount; cnt++)
@@ -759,16 +770,17 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
  * @param[in] setType set for atomic set
  */
 
-static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType, int * setRet)
+static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType)
 {
 	char* faultParam = NULL;
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
 	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
-	int ret=0, size = 0, cnt = 0, cnt1=0;
+	int ret=0, size = 0, cnt = 0, cnt1=0, retIndex=0, index = -1;
 	componentStruct_t ** ppComponents = NULL;
 	char CompName[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
+	char objectName[MAX_PARAMETERNAME_LEN] = { 0 };
 	BOOL bRadioRestartEn = (BOOL)FALSE;
 	unsigned int writeID = CCSP_COMPONENT_ID_WebPA;
 
@@ -780,141 +792,130 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	strcpy(l_Subsystem, "eRT.");
 	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 	parameterValStruct_t *RadApplyParam = NULL;
-	parameterValStruct_t val_set[4] = { { "Device.WiFi.Radio.1.X_CISCO_COM_ApplySettingSSID","1", ccsp_int}, 						{ "Device.WiFi.Radio.1.X_CISCO_COM_ApplySetting", "true", ccsp_boolean},
-					{ "Device.WiFi.Radio.2.X_CISCO_COM_ApplySettingSSID","2", ccsp_int},
-					{ "Device.WiFi.Radio.2.X_CISCO_COM_ApplySetting", "true", ccsp_boolean}};
+	parameterValStruct_t val_set[4] = { 
+					{"Device.WiFi.Radio.1.X_CISCO_COM_ApplySettingSSID","1", ccsp_int},
+					{"Device.WiFi.Radio.1.X_CISCO_COM_ApplySetting", "true", ccsp_boolean},
+					{"Device.WiFi.Radio.2.X_CISCO_COM_ApplySettingSSID","2", ccsp_int},
+					{"Device.WiFi.Radio.2.X_CISCO_COM_ApplySetting", "true", ccsp_boolean} };
 	parameterValStruct_t* val = (parameterValStruct_t*) malloc(sizeof(parameterValStruct_t) * paramCount);
 	memset(val,0,(sizeof(parameterValStruct_t) * paramCount));
 	
-	if(setType == WEBPA_SET)
+	strcpy(paramName, paramVal[0].name);
+	retIndex = IndexMpa_WEBPAtoCPE(paramName);
+	if(retIndex== -1)
 	{
-		for (cnt = 0; cnt < paramCount; cnt++) 
+		ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+		WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
+		WAL_FREE(val);
+		return ret;
+	}
+
+	getObjectName(paramName, objectName);
+	index = getMatchingComponentValArrayIndex(objectName);
+	strcpy(paramName, paramVal[0].name);
+	WalPrint("parameterName: %s, objectName: %s, matching index=%d\n",paramName,objectName,index);
+
+	// Cannot identify the component from cache, make DBUS call to fetch component
+	if(index == -1 || ComponentValArray[index].comp_size > 1)
+	{
+		// GET Component for parameter from stack
+		WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);		
+		WalPrint("Get component for parameterName : %s from stack\n",paramName);
+
+		ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle, dst_pathname_cr, paramName, l_Subsystem, &ppComponents, &size);
+		WalPrint("size : %d, ret : %d\n",size,ret);
+			
+		if (ret == CCSP_SUCCESS && size == 1)
+		{	
+			strcpy(CompName,ppComponents[0]->componentName);
+			strcpy(dbusPath,ppComponents[0]->dbusPath);
+			free_componentStruct_t(bus_handle, size, ppComponents);
+		}
+		else
 		{
-			strcpy(paramName, paramVal[cnt].name);
-			IndexMpa_WEBPAtoCPE(paramName);
-			val[cnt].parameterName = NULL;
-			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
-					dst_pathname_cr, paramName, l_Subsystem, 
-					&ppComponents, &size);
-	
-			if (ret == CCSP_SUCCESS && size == 1) 
-			{
-				ret = prepare_parameterValueStruct(&val[cnt], &paramVal[cnt], paramName);
-				if(ret)
-				{
-					setRet[cnt] = ret;
-					WalError("Preparing parameter value struct is failed. \n");
-					free_componentStruct_t(bus_handle, size, ppComponents);
-					continue;
-				}
-
-				ret = CcspBaseIf_setParameterValues(bus_handle,	ppComponents[0]->componentName, ppComponents[0]->dbusPath, 0, CCSP_COMPONENT_ID_WebPA, &val[cnt], 1, TRUE, &faultParam);
-
-				if (ret != CCSP_SUCCESS && faultParam)
-				{
-					setRet[cnt] = ret;
-					WalError("Failed to SetValue for param  '%s' ret : %d \n", faultParam, ret);
-					WAL_FREE(faultParam);
-					free_componentStruct_t(bus_handle, size, ppComponents);
-					continue;
-				}
-				
-				setRet[cnt] = ret;
-				free_componentStruct_t(bus_handle, size, ppComponents);
-			}
-			else 
-			{
-				setRet[cnt] = ret;
-				WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
-				free_componentStruct_t(bus_handle, size, ppComponents);
-				continue;
-			} 			
+			WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
+			free_componentStruct_t(bus_handle, size, ppComponents);
+			WAL_FREE(val);
+			return ret;
 		}
 	}
 	else
 	{
-		strcpy(paramName, paramVal[0].name);
-		IndexMpa_WEBPAtoCPE(paramName);
-		ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
-				dst_pathname_cr, paramName, l_Subsystem, 
-				&ppComponents, &size);
-		if(ret != CCSP_SUCCESS)
+	   strcpy(CompName,ComponentValArray[index].comp_name);
+	   strcpy(dbusPath,ComponentValArray[index].dbus_path); 
+	}	
+	WalInfo("parameterName: %s, CompName : %s, dbusPath : %s\n", paramName, CompName, dbusPath);
+	
+	if(!strcmp(CompName,"eRT.com.cisco.spvtg.ccsp.wifi")) 
+	{
+		bRadioRestartEn = TRUE;
+	}
+
+	for (cnt = 0; cnt < paramCount; cnt++) 
+	{
+	        retIndex=0;
+		strcpy(paramName, paramVal[cnt].name);
+		retIndex = IndexMpa_WEBPAtoCPE(paramName);
+		if(retIndex == -1)
 		{
+			ret = CCSP_ERR_INVALID_PARAMETER_NAME;
 			WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
-			WAL_FREE(val);
-			free_componentStruct_t(bus_handle, size, ppComponents);
-			return ret;
-		}
-		strcpy(CompName, ppComponents[0]->componentName);
-		strcpy(dbusPath, ppComponents[0]->dbusPath);
-		WalPrint("CompName = %s, dbusPath : %s, paramCount = %d\n", CompName, dbusPath,paramCount);
-		if(!strcmp(CompName,"eRT.com.cisco.spvtg.ccsp.wifi")) 
-		{
-			bRadioRestartEn = TRUE;
-		}
-
-		for (cnt = 0; cnt < paramCount; cnt++) 
-		{
-			strcpy(paramName, paramVal[cnt].name);
-			IndexMpa_WEBPAtoCPE(paramName);
-
-			ret = prepare_parameterValueStruct(&val[cnt], &paramVal[cnt], paramName);
-			if(ret)
-			{
-				WalError("Preparing parameter value struct is Failed \n");
-				free_componentStruct_t(bus_handle, size, ppComponents);
-				free_set_param_values_memory(val,paramCount,faultParam);
-				return ret;
-			}
-		}
-		
-		writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
-		ret = CcspBaseIf_setParameterValues(bus_handle,CompName, dbusPath, 0, writeID, val, paramCount, TRUE, &faultParam);
-		if (ret != CCSP_SUCCESS && faultParam) 
-		{
-			WalError("Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
-			free_componentStruct_t(bus_handle, size, ppComponents);
 			free_set_param_values_memory(val,paramCount,faultParam);
 			return ret;
 		}
 
-		//Identify the radio and apply settings
-		if(bRadioRestartEn)
+		ret = prepare_parameterValueStruct(&val[cnt], &paramVal[cnt], paramName);
+		if(ret)
 		{
-			bRadioRestartEn = FALSE;
-			identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
-			if((bRestartRadio1 == TRUE) && (bRestartRadio2 == TRUE)) 
-			{
-				WalPrint("Need to restart both the Radios\n");
-				RadApplyParam = val_set;
-				nreq = 4;
-			}
-
-			else if(bRestartRadio1) 
-			{
-				WalPrint("Need to restart Radio 1\n");
-				RadApplyParam = val_set;
-				nreq = 2;
-			}
-			else if(bRestartRadio2) 
-			{
-				WalPrint("Need to restart Radio 2\n");
-				RadApplyParam = &val_set[2];
-				nreq = 2;
-			}
-
-			writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
-			ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, RadApplyParam, nreq, TRUE,&faultParam);
-			if (ret != CCSP_SUCCESS && faultParam) 
-			{
-				WalError("Failed to Set Apply Settings\n");
-			}
+			WalError("Preparing parameter value struct is Failed \n");
+			free_set_param_values_memory(val,paramCount,faultParam);
+			return ret;
 		}
-		 free_componentStruct_t(bus_handle, size, ppComponents);
-
 	}
-	free_set_param_values_memory(val,paramCount,faultParam);
-	
+		
+	writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
+	ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, val, paramCount, TRUE, &faultParam);
+	if (ret != CCSP_SUCCESS && faultParam) 
+	{
+		WalError("Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
+		free_set_param_values_memory(val,paramCount,faultParam);
+		return ret;
+	}
+
+	//Identify the radio and apply settings
+	if(bRadioRestartEn)
+	{
+		bRadioRestartEn = FALSE;
+		identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
+		if((bRestartRadio1 == TRUE) && (bRestartRadio2 == TRUE)) 
+		{
+			WalPrint("Need to restart both the Radios\n");
+			RadApplyParam = val_set;
+			nreq = 4;
+		}
+
+		else if(bRestartRadio1) 
+		{
+			WalPrint("Need to restart Radio 1\n");
+			RadApplyParam = val_set;
+			nreq = 2;
+		}
+		else if(bRestartRadio2) 
+		{
+			WalPrint("Need to restart Radio 2\n");
+			RadApplyParam = &val_set[2];
+			nreq = 2;
+		}
+
+		writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
+		ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, RadApplyParam, nreq, TRUE,&faultParam);
+		if (ret != CCSP_SUCCESS && faultParam) 
+		{
+			WalError("Failed to Set Apply Settings\n");
+		}
+	}
+
+	free_set_param_values_memory(val,paramCount,faultParam);	
 	return ret;
 }
 
@@ -1129,9 +1130,9 @@ static int setParamAttributes(const char *pParameterName, const AttrVal *attArr)
  * @param[in] pParameterName parameter name
  */
  
-static void IndexMpa_WEBPAtoCPE(char *pParameterName)
+static int IndexMpa_WEBPAtoCPE(char *pParameterName)
 {
-	int i = 0, j = 0, dmlNameLen = 0, instNum = 0;
+	int i = 0, j = 0, dmlNameLen = 0, instNum = 0, len = 0, matchFlag = -1;
 	char pDmIntString[WIFI_MAX_STRING_LEN];
 	char* instNumStart = NULL;
 	char restDmlString[WIFI_MAX_STRING_LEN];
@@ -1152,32 +1153,48 @@ static void IndexMpa_WEBPAtoCPE(char *pParameterName)
 				{
 					instNumStart++;
 				}
+				else
+				{ 
+				  WalPrint("No matching index as instNumStart[0] : %c\n",instNumStart[0]);
+				  break;
+				}
 				sscanf(instNumStart, "%d%s", &instNum, restDmlString);
+				WalPrint("instNum : %d restDmlString : %s\n",instNum,restDmlString);
 
 				// Find instance match and translate
 				if (i == 0)
 				{
 					// For Device.WiFI.Radio.
 					j = 0;
+					len=2;
 				}
 				else
 				{
 					// For other than Device.WiFI.Radio.
 					j = 2;
+					len =WIFI_INDEX_MAP_SIZE;
 				}
-				for (j; j < WIFI_INDEX_MAP_SIZE; j++)
+				for (j; j < len; j++)
 				{
 					if (IndexMap[j].WebPaInstanceNumber == instNum)
 					{
 						sprintf(pDmIntString, "%s.%d%s", CcspDmlName[i], IndexMap[j].CcspInstanceNumber, restDmlString);
 						strcpy(pParameterName, pDmIntString);
+						matchFlag = 1;
 						break;
 					}
+				}
+				WalPrint("matchFlag %d\n",matchFlag);
+				if(matchFlag == -1)
+				{
+					WalError("Invalid index for : %s\n",pParameterName);
+					return matchFlag;
 				}
 			}
 			break;
 		}
 	}
+	return 0;
 }
 
 /**
@@ -1276,9 +1293,12 @@ static void getObjectName(char *str, char *objectName)
 {
 	WalPrint("Inside getObjectName input str %s\n", str);
 	char *tmpStr;
-	if(str)
+	char localStr[MAX_PARAMETERNAME_LEN]={'\0'};
+	strcpy(localStr,str);
+	
+	if(localStr)
 	{	
-		tmpStr = strtok(str,".");
+		tmpStr = strtok(localStr,".");
 		
 		while (tmpStr != NULL)
 		{
@@ -1288,8 +1308,9 @@ static void getObjectName(char *str, char *objectName)
 				strcpy(objectName,tmpStr);
 				WalPrint("_________ objectName %s__________ \n",objectName);
 			}
-	    		break;
+	    	break;
 	  	}
+	  	WalPrint("localStr is : %s str is : %s\n",localStr,str);
 	}
 }
 
