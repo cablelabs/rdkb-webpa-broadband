@@ -22,7 +22,11 @@
 #define MAX_PATHNAME_CR_LEN					64
 #define CCSP_COMPONENT_ID_WebPA					0x0000000A
 #define CCSP_COMPONENT_ID_XPC					0x0000000B
-#define RDKB_TR181_OBJECT_COUNT					33
+#define RDKB_TR181_OBJECT_LEVEL1_COUNT			34
+#define RDKB_TR181_OBJECT_LEVEL2_COUNT			12
+#define WAL_COMPONENT_INIT_RETRY_COUNT			4
+#define WAL_COMPONENT_INIT_RETRY_INTERVAL		10
+
 /*----------------------------------------------------------------------------*/
 /*                               Data Structures                              */
 /*----------------------------------------------------------------------------*/
@@ -53,7 +57,9 @@ typedef struct
 /*                            File Scoped Variables                           */
 /*----------------------------------------------------------------------------*/
 void (*notifyCbFn)(ParamNotify*) = NULL;
-static ComponentVal ComponentValArray[RDKB_TR181_OBJECT_COUNT] = {'\0'};
+static ComponentVal ComponentValArray[RDKB_TR181_OBJECT_LEVEL1_COUNT] = {'\0'};
+ComponentVal SubComponentValArray[RDKB_TR181_OBJECT_LEVEL2_COUNT] = {'\0'};
+int compCacheSuccessCnt = 0, subCompCacheSuccessCnt = 0;
 static char *CcspDmlName[WIFI_PARAM_MAP_SIZE] = {"Device.WiFi.Radio", "Device.WiFi.SSID", "Device.WiFi.AccessPoint"};
 static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 {10000, 1},
@@ -75,9 +81,8 @@ static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 {10107, 14},
 {10108, 16}
 };
-char *objectList[RDKB_TR181_OBJECT_COUNT] ={
+char *objectList[] ={
 "Device.WiFi.",
-//"Device.Helper.",
 "Device.DeviceInfo.",
 "Device.GatewayInfo.",
 "Device.Time.",
@@ -109,11 +114,25 @@ char *objectList[RDKB_TR181_OBJECT_COUNT] ={
 "Device.X_CISCO_COM_MultiLAN.",
 "Device.X_COMCAST_COM_GRE.",
 "Device.X_CISCO_COM_GRE.",
-"Device.Hosts."
-//"Device.X_CISCO_COM_FileTransfer.",
-//"Device.X_CISCO_COM_TrueStaticIP."
+"Device.Hosts.",
+"Device.ManagementServer."
 };
-        
+ 
+char *subObjectList[] = 
+{
+"Device.DeviceInfo.NetworkProperties.",
+"Device.MoCA.X_CISCO_COM_WiFi_Extender.",
+"Device.MoCA.Interface.",
+"Device.IP.Diagnostics.",
+"Device.IP.Interface.",
+"Device.DNS.Diagnostics.",
+"Device.DNS.Client.",
+"Device.DeviceInfo.VendorConfigFile.",
+"Device.DeviceInfo.MemoryStatus.",
+"Device.DeviceInfo.ProcessStatus.",
+"Device.DeviceInfo.Webpa.",
+"Device.DeviceInfo.SupportedDataModel."
+}; 
 
 /*----------------------------------------------------------------------------*/
 /*                             Function Prototypes                            */
@@ -133,7 +152,9 @@ static void identifyRadioIndexToReset(int paramCount, parameterValStruct_t* val,
 static int IndexMpa_WEBPAtoCPE(char *pParameterName);
 static void IndexMpa_CPEtoWEBPA(char **ppParameterName);
 static int getMatchingComponentValArrayIndex(char *objectName);
-static void getObjectName(char *str, char *objectName);
+static int getMatchingSubComponentValArrayIndex(char *objectName);
+static void getObjectName(char *str, char *objectName, int objectLevel);
+static int getComponentInfoFromCache(char *parameterName, char *objectName, char *compName, char *dbusPath);
 
 extern ANSC_HANDLE bus_handle;
 
@@ -164,7 +185,7 @@ WAL_STATUS RegisterNotifyCB(notifyCB cb)
 void getValues(const char *paramName[], const unsigned int paramCount, ParamVal ***paramValArr,
 		int *retValCount, WAL_STATUS *retStatus)
 {
-	int cnt1=0, cnt2=0, compCount=0, matchFlag=0, subParamCount=0, ret = -1, startIndex = 0,size = 0, error = 0, retIndex=0;
+	int cnt1=0, cnt2=0, compCount=0, matchFlag=0, subParamCount=0, ret = -1, startIndex = 0,size = 0, error = 0, retIndex=0, index = -1;
 	char parameterName[MAX_PARAMETERNAME_LEN] = {'\0'};
 	char objectName[MAX_PARAMETERNAME_LEN] = {'\0'};
 	ParamCompList *ParamGroup = NULL;
@@ -180,15 +201,14 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 	{
 		matchFlag = 0;
 
-		// Get the matching component index from cache           	
-		strcpy(parameterName,paramName[cnt1]);        
-		getObjectName(parameterName, objectName);
-		int index = getMatchingComponentValArrayIndex(objectName);
-		WalPrint("parameterName: %s, objectName: %s, matching index=%d\n",parameterName,objectName,index);
-
+		// Get the matching component index from cache
+		strcpy(parameterName,paramName[cnt1]);   
+		index = getComponentInfoFromCache(parameterName, objectName, compName, dbusPath);         	
+		
 		// Cannot identify the component from cache, make DBUS call to fetch component
-		if(index == -1 || ComponentValArray[index].comp_size > 1)
+		if(index == -1 || ComponentValArray[index].comp_size > 2) //anything above size > 2
 		{
+			WalPrint("in if for size >2\n");
 			// GET Component for parameter from stack
 			WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
 			strcpy(parameterName,paramName[cnt1]);
@@ -220,11 +240,7 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 				break;
 			}
 		}
-		else
-		{
-		   strcpy(compName,ComponentValArray[index].comp_name);
-		   strcpy(dbusPath,ComponentValArray[index].dbus_path); 
-		}	
+	
 		WalPrint("parameterName: %s, compName : %s, dbusPath : %s\n", parameterName, compName, dbusPath);
 		if(ParamGroup == NULL)
 		{
@@ -345,6 +361,33 @@ static void free_ParamCompList(ParamCompList *ParamGroup, int compCount)
 		WAL_FREE(ParamGroup[cnt1].dbus_path);
 	}
 	WAL_FREE(ParamGroup);
+}
+
+static int getComponentInfoFromCache(char *parameterName, char *objectName, char *compName, char *dbusPath)
+{   
+	int index = -1;	
+	
+	getObjectName(parameterName, objectName, 1);
+	index = getMatchingComponentValArrayIndex(objectName);
+	WalPrint("objectLevel: 1, parameterName: %s, objectName: %s, matching index: %d\n",parameterName,objectName,index);
+		 
+	if((index != -1) && (ComponentValArray[index].comp_size == 1))
+	{
+		strcpy(compName,ComponentValArray[index].comp_name);
+		strcpy(dbusPath,ComponentValArray[index].dbus_path);
+	}
+	else if((index != -1) && (ComponentValArray[index].comp_size == 2))
+	{
+		getObjectName(parameterName, objectName, 2);
+		index = getMatchingSubComponentValArrayIndex(objectName);
+		WalPrint("objectLevel: 2, parameterName: %s, objectName: %s, matching index=%d\n",parameterName,objectName,index);
+		if(index != -1 )
+		{
+			strcpy(compName,SubComponentValArray[index].comp_name);
+			strcpy(dbusPath,SubComponentValArray[index].dbus_path); 
+		}
+    	}
+	return index;	
 }
 
 /**
@@ -778,6 +821,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	int ret=0, size = 0, cnt = 0, cnt1=0, retIndex=0, index = -1;
 	componentStruct_t ** ppComponents = NULL;
 	char CompName[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	char tempCompName[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
 	char objectName[MAX_PARAMETERNAME_LEN] = { 0 };
@@ -809,22 +853,30 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 		WAL_FREE(val);
 		return ret;
 	}
-
-	getObjectName(paramName, objectName);
-	index = getMatchingComponentValArrayIndex(objectName);
-	strcpy(paramName, paramVal[0].name);
-	WalPrint("parameterName: %s, objectName: %s, matching index=%d\n",paramName,objectName,index);
-
+	
+	index = getComponentInfoFromCache(paramName,objectName,CompName,dbusPath);
+	
 	// Cannot identify the component from cache, make DBUS call to fetch component
-	if(index == -1 || ComponentValArray[index].comp_size > 1)
+	if(index == -1 || ComponentValArray[index].comp_size > 2) //anything above size > 2
 	{
+		WalPrint("in if for size >2\n");
 		// GET Component for parameter from stack
-		WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);		
-		WalPrint("Get component for parameterName : %s from stack\n",paramName);
+		WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
+		strcpy(paramName,paramVal[0].name);
+		retIndex = IndexMpa_WEBPAtoCPE(paramName);
+		if(retIndex == -1)
+		{
+			ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+			WalError("Parameter name is not supported, invalid index. ret = %d\n", ret);
+			WAL_FREE(val);
+			return ret;
+		}
+		WalPrint("Get component for paramName : %s from stack\n",paramName);
 
-		ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle, dst_pathname_cr, paramName, l_Subsystem, &ppComponents, &size);
+		ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
+			dst_pathname_cr, paramName, l_Subsystem, &ppComponents, &size);
 		WalPrint("size : %d, ret : %d\n",size,ret);
-			
+		
 		if (ret == CCSP_SUCCESS && size == 1)
 		{	
 			strcpy(CompName,ppComponents[0]->componentName);
@@ -833,17 +885,13 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 		}
 		else
 		{
-			WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
+			WalError("Parameter name %s is not supported. ret = %d\n", paramName, ret);
 			free_componentStruct_t(bus_handle, size, ppComponents);
 			WAL_FREE(val);
 			return ret;
 		}
 	}
-	else
-	{
-	   strcpy(CompName,ComponentValArray[index].comp_name);
-	   strcpy(dbusPath,ComponentValArray[index].dbus_path); 
-	}	
+	
 	WalInfo("parameterName: %s, CompName : %s, dbusPath : %s\n", paramName, CompName, dbusPath);
 	
 	if(!strcmp(CompName,"eRT.com.cisco.spvtg.ccsp.wifi")) 
@@ -853,7 +901,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 
 	for (cnt = 0; cnt < paramCount; cnt++) 
 	{
-	        retIndex=0;
+	    	retIndex=0;
 		strcpy(paramName, paramVal[cnt].name);
 		retIndex = IndexMpa_WEBPAtoCPE(paramName);
 		if(retIndex == -1)
@@ -863,7 +911,54 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 			free_set_param_values_memory(val,paramCount,faultParam);
 			return ret;
 		}
+		
+		WalPrint("-------Starting parameter component comparison-----------\n");
+		index = getComponentInfoFromCache(paramName,objectName,tempCompName,dbusPath);
+				
+		// Cannot identify the component from cache, make DBUS call to fetch component
+		if(index == -1 || ComponentValArray[index].comp_size > 2) //anything above size > 2
+		{
+			WalPrint("in if for size >2\n");
+			// GET Component for parameter from stack
+			WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
+			strcpy(paramName,paramVal[cnt].name);
+			retIndex = IndexMpa_WEBPAtoCPE(paramName);
+			if(retIndex == -1)
+			{
+				ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+				WalError("Parameter name is not supported, invalid index. ret = %d\n", ret);
+				WAL_FREE(val);
+				return ret;
+			}
+			WalPrint("Get component for paramName : %s from stack\n",paramName);
 
+			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
+		        dst_pathname_cr, paramName, l_Subsystem, &ppComponents, &size);
+			WalPrint("size : %d, ret : %d\n",size,ret);
+			
+			if (ret == CCSP_SUCCESS && size == 1)
+			{	
+				strcpy(tempCompName,ppComponents[0]->componentName);
+				free_componentStruct_t(bus_handle, size, ppComponents);
+			}
+			else
+			{
+				WalError("Parameter name %s is not supported. ret = %d\n", paramName, ret);
+				free_componentStruct_t(bus_handle, size, ppComponents);
+				WAL_FREE(val);
+				return ret;
+			}
+		}
+		
+		WalInfo("parameterName: %s, tempCompName : %s\n", paramName, tempCompName);
+		if (strcmp(CompName, tempCompName) != 0)
+		{
+			WalError("Error: Parameters does not belong to the same component\n");
+			WAL_FREE(val);
+			return CCSP_FAILURE;
+		}
+		WalPrint("--------- End of parameter component comparison------\n");
+				
 		ret = prepare_parameterValueStruct(&val[cnt], &paramVal[cnt], paramName);
 		if(ret)
 		{
@@ -1270,16 +1365,40 @@ static void IndexMpa_CPEtoWEBPA(char **ppParameterName)
  */
 static int getMatchingComponentValArrayIndex(char *objectName)
 {
-	int i =0,index=-1;
-	for(i = 0; i < RDKB_TR181_OBJECT_COUNT ; i++)
+	int i =0,index = -1;
+
+	for(i = 0; i < compCacheSuccessCnt ; i++)
 	{
-		if(!strcmp(objectName,ComponentValArray[i].obj_name))
+		if(ComponentValArray[i].obj_name != NULL && !strcmp(objectName,ComponentValArray[i].obj_name))
 		{
 	      		index = ComponentValArray[i].comp_id;
+			WalPrint("Matching Component Val Array index for object %s : %d\n",objectName, index);
 			break;
 		}	    
 	}
-	WalPrint("Matching Component Val Array index for object %s : %d\n",objectName, index);
+	return index;
+}
+
+
+/**
+ * @brief getMatchingSubComponentValArrayIndex Compare objectName with the pre-populated SubComponentValArray and return matching index
+ *
+ * param[in] objectName 
+ * @return matching ComponentValArray index
+ */
+static int getMatchingSubComponentValArrayIndex(char *objectName)
+{
+	int i =0,index = -1;
+	
+	for(i = 0; i < subCompCacheSuccessCnt ; i++)
+	{
+		if(SubComponentValArray[i].obj_name != NULL && !strcmp(objectName,SubComponentValArray[i].obj_name))
+		{
+		      	index = SubComponentValArray[i].comp_id;
+			WalPrint("Matching Sub-Component Val Array index for object %s : %d\n",objectName, index);
+			break;
+		}	    
+	}	
 	return index;
 }
 
@@ -1288,13 +1407,14 @@ static int getMatchingComponentValArrayIndex(char *objectName)
  *
  * @param[in] str Parameter Name
  * param[out] objectName Set with the object name
+ * param[in] objectLevel Level of object 1, 2. Example 1 for WiFi and 2 for SSID
  */
-static void getObjectName(char *str, char *objectName)
+static void getObjectName(char *str, char *objectName, int objectLevel)
 {
-	WalPrint("Inside getObjectName input str %s\n", str);
 	char *tmpStr;
 	char localStr[MAX_PARAMETERNAME_LEN]={'\0'};
 	strcpy(localStr,str);
+	int count = 1;
 	
 	if(localStr)
 	{	
@@ -1303,14 +1423,14 @@ static void getObjectName(char *str, char *objectName)
 		while (tmpStr != NULL)
 		{
 			tmpStr = strtok (NULL, ".");
-			if(tmpStr)
+			if(tmpStr && count >= objectLevel)
 			{
 				strcpy(objectName,tmpStr);
 				WalPrint("_________ objectName %s__________ \n",objectName);
+	    		        break;
 			}
-	    	break;
+			count++;
 	  	}
-	  	WalPrint("localStr is : %s str is : %s\n",localStr,str);
 	}
 }
 
@@ -1359,7 +1479,7 @@ void WALInit()
 {
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
 	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
-	int ret = 0, i = 0, size = 0;
+	int ret = 0, i = 0, size = 0, len = 0, cnt = 0, cnt1 = 0, retryCount = 0;
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
 	componentStruct_t ** ppComponents = NULL;
 
@@ -1367,33 +1487,105 @@ void WALInit()
 	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 
 	WalPrint("-------- Start of populateComponentValArray -------\n");
-	for(i = 0; i < RDKB_TR181_OBJECT_COUNT; i++)
+	len = sizeof(objectList)/sizeof(objectList[0]);
+	WalPrint("Length of object list : %d\n",len);
+	for(i = 0; i < len ; i++)
 	{
 		strcpy(paramName,objectList[i]);
-		ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
-		        dst_pathname_cr, paramName, l_Subsystem, &ppComponents, &size);
-		WalPrint("size : %d\n",size);
-		if (ret == CCSP_SUCCESS)
-		{	         
-			// Allocate memory for ComponentVal obj_name, comp_name, dbus_path
-			ComponentValArray[i].obj_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
-			ComponentValArray[i].comp_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
-			ComponentValArray[i].dbus_path = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
-
-			ComponentValArray[i].comp_id = i;
-			ComponentValArray[i].comp_size = size;
-			getObjectName(paramName,ComponentValArray[i].obj_name);
-			strcpy(ComponentValArray[i].comp_name,ppComponents[0]->componentName);
-			strcpy(ComponentValArray[i].dbus_path,ppComponents[0]->dbusPath);
-	               
-			WalInfo("ComponentValArray[%d].comp_id = %d,ComponentValArray[i].comp_size = %d, ComponentValArray[%d].obj_name = %s, ComponentValArray[%d].comp_name = %s, ComponentValArray[%d].dbus_path = %s\n", i, ComponentValArray[i].comp_id,ComponentValArray[i].comp_size, i, ComponentValArray[i].obj_name, i, ComponentValArray[i].comp_name, i, ComponentValArray[i].dbus_path);  
-	    	}
-		else
+		do
 		{
-			WalError("------------Failed to get component info for object %s----------:ret = %d\n", objectList[i], ret);
-		}
-		free_componentStruct_t(bus_handle, size, ppComponents);
+			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
+					dst_pathname_cr, paramName, l_Subsystem, &ppComponents, &size);
+			
+			if (ret == CCSP_SUCCESS)
+			{	    
+				retryCount = 0;
+				// Allocate memory for ComponentVal obj_name, comp_name, dbus_path
+				ComponentValArray[cnt].obj_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
+				ComponentValArray[cnt].comp_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
+				ComponentValArray[cnt].dbus_path = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
+
+				ComponentValArray[cnt].comp_id = cnt;
+				ComponentValArray[cnt].comp_size = size;
+				getObjectName(paramName,ComponentValArray[cnt].obj_name,1);
+				strcpy(ComponentValArray[cnt].comp_name,ppComponents[0]->componentName);
+				strcpy(ComponentValArray[cnt].dbus_path,ppComponents[0]->dbusPath);
+					   
+				WalInfo("ComponentValArray[%d].comp_id = %d,ComponentValArray[cnt].comp_size = %d, ComponentValArray[%d].obj_name = %s, ComponentValArray[%d].comp_name = %s, ComponentValArray[%d].dbus_path = %s\n", cnt, ComponentValArray[cnt].comp_id,ComponentValArray[cnt].comp_size, cnt, ComponentValArray[cnt].obj_name, cnt, ComponentValArray[cnt].comp_name, cnt, ComponentValArray[cnt].dbus_path);  
+				cnt++;
+			}
+			else
+			{
+				retryCount++;
+				WalError("------------Failed to get component info for object %s----------: ret = %d, size = %d, retrying .... %d ...\n", objectList[i], ret, size, retryCount);
+				if(retryCount == WAL_COMPONENT_INIT_RETRY_COUNT)
+				{
+					WalError("Unable to get component for object %s\n", objectList[i]);
+				}
+				else
+				{
+					sleep(WAL_COMPONENT_INIT_RETRY_INTERVAL);
+				}
+			}
+			free_componentStruct_t(bus_handle, size, ppComponents);
+
+		}while((retryCount >= 1) && (retryCount <= 3));		
 	}
+	
+	compCacheSuccessCnt = cnt - 1;
+	WalPrint("compCacheSuccessCnt : %d\n", compCacheSuccessCnt);
+	
+	WalPrint("Initializing sub component list\n");
+	len = sizeof(subObjectList)/sizeof(subObjectList[0]);
+	WalPrint("Length of sub object list : %d\n",len);
+
+	retryCount = 0;
+	for(i = 0; i < len; i++)
+	{
+		strcpy(paramName,subObjectList[i]);
+		do
+		{
+			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
+					dst_pathname_cr, paramName, l_Subsystem, &ppComponents, &size);
+			
+			if (ret == CCSP_SUCCESS)
+			{	       
+				retryCount = 0;
+				// Allocate memory for ComponentVal obj_name, comp_name, dbus_path
+				SubComponentValArray[cnt1].obj_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
+				SubComponentValArray[cnt1].comp_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
+				SubComponentValArray[cnt1].dbus_path = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
+
+				SubComponentValArray[cnt1].comp_id = cnt1;
+				SubComponentValArray[cnt1].comp_size = size;
+				getObjectName(paramName,SubComponentValArray[cnt1].obj_name,2);
+				WalPrint("in WALInit() SubComponentValArray[cnt].obj_name is %s",SubComponentValArray[cnt1].obj_name);
+				strcpy(SubComponentValArray[cnt1].comp_name,ppComponents[0]->componentName);
+				strcpy(SubComponentValArray[cnt1].dbus_path,ppComponents[0]->dbusPath);
+					   
+				WalInfo("SubComponentValArray[%d].comp_id = %d,SubComponentValArray[i].comp_size = %d, SubComponentValArray[%d].obj_name = %s, SubComponentValArray[%d].comp_name = %s, SubComponentValArray[%d].dbus_path = %s\n", cnt1, SubComponentValArray[cnt1].comp_id,SubComponentValArray[cnt1].comp_size, cnt1, SubComponentValArray[cnt1].obj_name, cnt1, SubComponentValArray[cnt1].comp_name, cnt1, SubComponentValArray[cnt1].dbus_path);  
+				cnt1++;
+			}
+			else
+			{
+				retryCount++;
+				WalError("------------Failed to get component info for object %s----------: ret = %d, size = %d, retrying.... %d ....\n", subObjectList[i], ret, size, retryCount);
+				if(retryCount == WAL_COMPONENT_INIT_RETRY_COUNT)
+				{
+					WalError("Unable to get component for object %s\n", subObjectList[i]);
+				}
+				else
+				{
+					sleep(WAL_COMPONENT_INIT_RETRY_INTERVAL);
+				}
+			}
+			free_componentStruct_t(bus_handle, size, ppComponents);
+
+		}while((retryCount >= 1) && (retryCount <= (WAL_COMPONENT_INIT_RETRY_COUNT - 1)));
+	}
+
+	subCompCacheSuccessCnt = cnt1;
+	WalPrint("subCompCacheSuccessCnt : %d\n", subCompCacheSuccessCnt);
 	WalPrint("-------- End of populateComponentValArray -------\n");
 }
 
