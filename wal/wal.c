@@ -9,6 +9,7 @@
 #include "stdlib.h"
 #include "ccsp_dm_api.h"
 #include "wal.h"
+#include <sys/time.h>
 
 /*----------------------------------------------------------------------------*/
 /*                                   Macros                                   */
@@ -59,7 +60,13 @@ typedef struct
 void (*notifyCbFn)(ParamNotify*) = NULL;
 static ComponentVal ComponentValArray[RDKB_TR181_OBJECT_LEVEL1_COUNT] = {'\0'};
 ComponentVal SubComponentValArray[RDKB_TR181_OBJECT_LEVEL2_COUNT] = {'\0'};
+BOOL bRadioRestartEn = FALSE;
+BOOL bRestartRadio1 = FALSE;
+BOOL bRestartRadio2 = FALSE;
+pthread_mutex_t applySetting_mutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t applySetting_cond = PTHREAD_COND_INITIALIZER;
 int compCacheSuccessCnt = 0, subCompCacheSuccessCnt = 0;
+char * wifiCompName = NULL;
 static char *CcspDmlName[WIFI_PARAM_MAP_SIZE] = {"Device.WiFi.Radio", "Device.WiFi.SSID", "Device.WiFi.AccessPoint"};
 static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 {10000, 1},
@@ -81,7 +88,7 @@ static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 {10107, 14},
 {10108, 16}
 };
-char *objectList[] ={
+static char *objectList[] ={
 "Device.WiFi.",
 "Device.DeviceInfo.",
 "Device.GatewayInfo.",
@@ -118,7 +125,7 @@ char *objectList[] ={
 "Device.ManagementServer."
 };
  
-char *subObjectList[] = 
+static char *subObjectList[] = 
 {
 "Device.DeviceInfo.NetworkProperties.",
 "Device.MoCA.X_CISCO_COM_WiFi_Extender.",
@@ -155,7 +162,11 @@ static int getMatchingComponentValArrayIndex(char *objectName);
 static int getMatchingSubComponentValArrayIndex(char *objectName);
 static void getObjectName(char *str, char *objectName, int objectLevel);
 static int getComponentInfoFromCache(char *parameterName, char *objectName, char *compName, char *dbusPath);
+static void initApplyWiFiSettings();
+static void *applyWiFiSettingsTask();
 
+extern void getCurrentTime(struct timeval *timer);
+extern long timeValDiff(struct timeval *starttime, struct timeval *finishtime);
 extern ANSC_HANDLE bus_handle;
 
 /*----------------------------------------------------------------------------*/
@@ -292,7 +303,7 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		      	ParamGroup[compCount].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
 				strcpy(ParamGroup[compCount].dbus_path, dbusPath);
 
-				// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)	  
+			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)	  
 		      	ParamGroup[compCount].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));
 		        ParamGroup[compCount].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
 		      	strcpy(ParamGroup[compCount].parameterName[0],paramName[cnt1]);
@@ -318,10 +329,21 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		  	{
 			 		WalInfo("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
 		  	}
-		  
+			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
+			{
+				WalPrint("Before mutex lock in getValues\n");
+				pthread_mutex_lock (&applySetting_mutex);
+				WalPrint("After mutex lock in getValues\n");
+			}
 		  	// GET atomic value call
 			WalPrint("startIndex %d\n",startIndex);
 		  	ret = getAtomicParamValues(ParamGroup[cnt1].parameterName, ParamGroup[cnt1].parameterCount, ParamGroup[cnt1].comp_name, ParamGroup[cnt1].dbus_path, paramValArr, startIndex);
+			
+			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
+			{
+				pthread_mutex_unlock (&applySetting_mutex);
+				WalPrint("After thread unlock in getValues\n");
+			}
 		  	if(ret != CCSP_SUCCESS)
 		  	{
 				WalError("Get Atomic Values call failed for ParamGroup[%d]->comp_name :%s ret: %d\n",cnt1,ParamGroup[cnt1].comp_name,ret);
@@ -825,22 +847,11 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
 	char objectName[MAX_PARAMETERNAME_LEN] = { 0 };
-	BOOL bRadioRestartEn = (BOOL)FALSE;
 	unsigned int writeID = CCSP_COMPONENT_ID_WebPA;
-
-	//parameters for atomic 
-	BOOL bRestartRadio1 = FALSE;
-	BOOL bRestartRadio2 = FALSE;
-	int nreq = 0;
 	
 	strcpy(l_Subsystem, "eRT.");
 	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
-	parameterValStruct_t *RadApplyParam = NULL;
-	parameterValStruct_t val_set[4] = { 
-					{"Device.WiFi.Radio.1.X_CISCO_COM_ApplySettingSSID","1", ccsp_int},
-					{"Device.WiFi.Radio.1.X_CISCO_COM_ApplySetting", "true", ccsp_boolean},
-					{"Device.WiFi.Radio.2.X_CISCO_COM_ApplySettingSSID","2", ccsp_int},
-					{"Device.WiFi.Radio.2.X_CISCO_COM_ApplySetting", "true", ccsp_boolean} };
+
 	parameterValStruct_t* val = (parameterValStruct_t*) malloc(sizeof(parameterValStruct_t) * paramCount);
 	memset(val,0,(sizeof(parameterValStruct_t) * paramCount));
 	
@@ -893,11 +904,6 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	}
 	
 	WalInfo("parameterName: %s, CompName : %s, dbusPath : %s\n", paramName, CompName, dbusPath);
-	
-	if(!strcmp(CompName,"eRT.com.cisco.spvtg.ccsp.wifi")) 
-	{
-		bRadioRestartEn = TRUE;
-	}
 
 	for (cnt = 0; cnt < paramCount; cnt++) 
 	{
@@ -969,49 +975,134 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	}
 		
 	writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
+	
+	if(!strcmp(CompName,wifiCompName)) 
+	{		
+		identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
+		WalPrint("Before mutex lock in setParamValues\n");
+		pthread_mutex_lock (&applySetting_mutex);
+		bRadioRestartEn = TRUE;		
+	}
+		
 	ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, val, paramCount, TRUE, &faultParam);
+	if(!strcmp(CompName,wifiCompName)) 
+	{
+		if(ret == CCSP_SUCCESS) //signal apply settings thread only when set is success
+		{
+			pthread_cond_signal(&applySetting_cond);
+			WalPrint("condition signalling in setParamValues\n");
+		}
+		
+		pthread_mutex_unlock (&applySetting_mutex);
+		WalPrint("mutex unlock in setParamValues\n");
+		
+	}	
 	if (ret != CCSP_SUCCESS && faultParam) 
 	{
 		WalError("Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
 		free_set_param_values_memory(val,paramCount,faultParam);
 		return ret;
 	}
-
-	//Identify the radio and apply settings
-	if(bRadioRestartEn)
-	{
-		bRadioRestartEn = FALSE;
-		identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
-		if((bRestartRadio1 == TRUE) && (bRestartRadio2 == TRUE)) 
-		{
-			WalPrint("Need to restart both the Radios\n");
-			RadApplyParam = val_set;
-			nreq = 4;
-		}
-
-		else if(bRestartRadio1) 
-		{
-			WalPrint("Need to restart Radio 1\n");
-			RadApplyParam = val_set;
-			nreq = 2;
-		}
-		else if(bRestartRadio2) 
-		{
-			WalPrint("Need to restart Radio 2\n");
-			RadApplyParam = &val_set[2];
-			nreq = 2;
-		}
-
-		writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
-		ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, RadApplyParam, nreq, TRUE,&faultParam);
-		if (ret != CCSP_SUCCESS && faultParam) 
-		{
-			WalError("Failed to Set Apply Settings\n");
-		}
-	}
-
 	free_set_param_values_memory(val,paramCount,faultParam);	
 	return ret;
+}
+
+static void initApplyWiFiSettings()
+{
+	int err = 0;
+	pthread_t *applySettingsThreadId = NULL;
+	WalPrint("============ initApplySettings ==============\n");
+	err = pthread_create(&applySettingsThreadId, NULL, applyWiFiSettingsTask, NULL);
+	if (err != 0) 
+	{
+		WalError("Error creating messages thread :[%s]\n", strerror(err));
+	}
+	else
+	{
+		WalPrint("applyWiFiSettings thread created Successfully\n");
+	}
+}
+
+static void *applyWiFiSettingsTask()
+{
+	char CompName[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	parameterValStruct_t *RadApplyParam = NULL;
+	char* faultParam = NULL;
+	unsigned int writeID = CCSP_COMPONENT_ID_WebPA;
+	struct timeval start,end,*startPtr,*endPtr;
+	startPtr = &start;
+	endPtr = &end;
+	int nreq = 0,ret=0;
+	WalPrint("================= applyWiFiSettings ==========\n");
+	parameterValStruct_t val_set[4] = { 
+					{"Device.WiFi.Radio.1.X_CISCO_COM_ApplySettingSSID","1", ccsp_int},
+					{"Device.WiFi.Radio.1.X_CISCO_COM_ApplySetting", "true", ccsp_boolean},
+					{"Device.WiFi.Radio.2.X_CISCO_COM_ApplySettingSSID","2", ccsp_int},
+					{"Device.WiFi.Radio.2.X_CISCO_COM_ApplySetting", "true", ccsp_boolean} };
+	
+	// Component cache index 0 maps to "Device.WiFi."
+	if(ComponentValArray[0].comp_name != NULL && ComponentValArray[0].dbus_path != NULL)
+	{				
+		strcpy(CompName,ComponentValArray[0].comp_name);
+		strcpy(dbusPath,ComponentValArray[0].dbus_path);
+		WalPrint("CompName : %s dbusPath : %s\n",CompName,dbusPath);
+	
+
+		//Identify the radio and apply settings
+		while(1)
+		{
+			WalPrint("Before cond wait in applyWiFiSettings\n");
+			pthread_cond_wait(&applySetting_cond, &applySetting_mutex);
+			getCurrentTime(startPtr);
+			WalPrint("After cond wait in applyWiFiSettings\n");
+			if(bRadioRestartEn)
+			{
+				bRadioRestartEn = FALSE;
+			
+				if((bRestartRadio1 == TRUE) && (bRestartRadio2 == TRUE)) 
+				{
+					WalPrint("Need to restart both the Radios\n");
+					RadApplyParam = val_set;
+					nreq = 4;
+				}
+
+				else if(bRestartRadio1) 
+				{
+					WalPrint("Need to restart Radio 1\n");
+					RadApplyParam = val_set;
+					nreq = 2;
+				}
+				else if(bRestartRadio2) 
+				{
+					WalPrint("Need to restart Radio 2\n");
+					RadApplyParam = &val_set[2];
+					nreq = 2;
+				}
+			
+				// Reset radio flags
+				bRestartRadio1 = FALSE;
+				bRestartRadio2 = FALSE;
+			
+				WalPrint("nreq : %d writeID : %d\n",nreq,writeID);
+				ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, RadApplyParam, nreq, TRUE,&faultParam);
+				WalInfo("After SPV in applyWiFiSettings ret = %d\n",ret);
+				if (ret != CCSP_SUCCESS && faultParam) 
+				{
+					WalError("Failed to Set Apply Settings\n");
+				}	
+			}
+			WalPrint("Before thread unlock in applyWiFiSettings\n");
+			pthread_mutex_unlock (&applySetting_mutex);
+			getCurrentTime(endPtr);
+			WalInfo("Elapsed time for apply setting : %ld ms\n", timeValDiff(startPtr, endPtr));
+		}
+	}
+	else
+	{
+		WalError("Failed to get WiFi component info from cache to initialize apply settings\n");
+	}
+	WalPrint("============ End =============\n");
 }
 
 
@@ -1587,5 +1678,15 @@ void WALInit()
 	subCompCacheSuccessCnt = cnt1;
 	WalPrint("subCompCacheSuccessCnt : %d\n", subCompCacheSuccessCnt);
 	WalPrint("-------- End of populateComponentValArray -------\n");
+
+	// Initialize wifiCompName variable
+	if(ComponentValArray[0].comp_name != NULL)
+	{
+		wifiCompName = ComponentValArray[0].comp_name;
+		WalPrint("wifiCompName %s\n", wifiCompName);
+	}
+
+	// Initialize Apply WiFi Settings handler
+	initApplyWiFiSettings();
 }
 
