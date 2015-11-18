@@ -28,6 +28,24 @@
 #define WAL_COMPONENT_INIT_RETRY_COUNT			4
 #define WAL_COMPONENT_INIT_RETRY_INTERVAL		10
 
+/* WebPA Configuration for RDKB */
+#define RDKB_WEBPA_COMPONENT_NAME            "com.cisco.spvtg.ccsp.webpaagent"
+#define RDKB_WEBPA_CFG_FILE                  "/nvram/webpa_cfg.json"
+#define RDKB_WEBPA_CFG_FILE_SRC              "/fss/gw/usr/ccsp/webpa/webpa_cfg.json"
+#define RDKB_WEBPA_DEVICE_MAC                "Device.DeviceInfo.X_COMCAST-COM_CM_MAC"
+#define RDKB_XPC_SYNC_PARAM_CID              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CID"
+#define RDKB_XPC_SYNC_PARAM_CMC              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CMC"
+#define RDKB_XPC_SYNC_PARAM_SPV              "Device.DeviceInfo.Webpa.X_COMCAST-COM_SyncProtocolVersion"
+#define STR_NOT_DEFINED                      "Not Defined"
+
+/* RDKB Logger defines */
+#define LOG_FATAL 0
+#define LOG_ERROR 1
+#define LOG_WARN 2
+#define LOG_NOTICE 3
+#define LOG_INFO 4
+#define LOG_DEBUG 5
+
 /*----------------------------------------------------------------------------*/
 /*                               Data Structures                              */
 /*----------------------------------------------------------------------------*/
@@ -1543,24 +1561,87 @@ void LOGInit()
  * @param[in] level LOG Level
  * @param[in] msg Message to be logged 
  */
-void _WEBPA_LOG(unsigned int level,const char *msg, ...)
-{       
-        va_list arg;
-        char*   pTempChar = (char*)malloc(4096);
+void _WEBPA_LOG(unsigned int level, const char *msg, ...)
+{
+	va_list arg;
+	char*   pTempChar = (char*)malloc(4096);
 	int ret = 0;
- 
-        if ( pTempChar && (level <= 4) )                                                             
-        {                                                                            
-                va_start(arg, msg);					 
-                ret = vsnprintf(pTempChar,4096,msg,arg);
+	unsigned int rdkLogLevel = LOG_DEBUG;
+
+	switch(level)
+	{
+		case WEBPA_LOG_ERROR:
+			rdkLogLevel = LOG_ERROR;
+			break;
+
+		case WEBPA_LOG_INFO:
+			rdkLogLevel = LOG_INFO;
+			break;
+
+		case WEBPA_LOG_PRINT:
+			rdkLogLevel = LOG_DEBUG;
+			break;
+	}
+
+	if( pTempChar && (rdkLogLevel <= 4) )
+	{
+		va_start(arg, msg);
+		ret = vsnprintf(pTempChar, 4096, msg,arg);
 		if(ret < 0)
 		{
 			perror(pTempChar);
 		}
-                va_end(arg);
-                RDK_LOG(level,"LOG.RDK.WEBPA",pTempChar);
-                free(pTempChar);                                                                       
-        }        
+		va_end(arg);
+		RDK_LOG(rdkLogLevel, "LOG.RDK.WEBPA", pTempChar);
+		free(pTempChar);
+	}
+}
+
+/**
+ * @brief getWebPAConfig interface returns the WebPA config data.
+ *
+ * @param[in] param WebPA config param name.
+ * @return const char* WebPA config param value.
+ */
+const char* getWebPAConfig(WCFG_PARAM_NAME param)
+{
+	const char *ret = NULL;
+	
+	switch(param)
+	{
+		case WCFG_COMPONENT_NAME:
+			ret = RDKB_WEBPA_COMPONENT_NAME;
+			break;
+
+		case WCFG_CFG_FILE:
+			ret = RDKB_WEBPA_CFG_FILE;
+			break;
+
+		case WCFG_CFG_FILE_SRC:
+			ret = RDKB_WEBPA_CFG_FILE_SRC;
+			break;
+
+		case WCFG_DEVICE_MAC:
+			ret = RDKB_WEBPA_DEVICE_MAC;
+			break;
+
+		case WCFG_XPC_SYNC_PARAM_CID:
+			ret = RDKB_XPC_SYNC_PARAM_CID;
+			break;
+
+		case WCFG_XPC_SYNC_PARAM_CMC:
+			ret = RDKB_XPC_SYNC_PARAM_CMC;
+			break;
+
+		case WCFG_XPC_SYNC_PARAM_SPV:
+			ret = RDKB_XPC_SYNC_PARAM_SPV;
+			break;
+
+		default:
+			ret = STR_NOT_DEFINED;
+	}
+	
+	return ret;
 }
 
 /**
