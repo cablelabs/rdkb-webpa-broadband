@@ -25,15 +25,26 @@ obj_files := $(addprefix $(ComponentBuildDir)/, $(source_files:%.c=%.o))
 -include $(obj_files:.o=.d)
 $(target): $(obj_files)
 
+RPC_SOURCES := ../app/webpa_rpc_xdr.c ../app/webpa_rpc_clnt.c ../app/webpa_rpc_server_stubs.c
+RPCGEN=rpcgen
+RPCGENFLAGS=-MC -N
+
 #
 #	Build targets
 #
-all: $(target) install
+all: rpcgenfiles $(target) install
 
 .PHONY: all clean
 
 clean:
 	rm -Rf $(ComponentBuildDir)
+
+rpcgenfiles:
+	rm -Rf ../app/webpa_rpc.h $(RPC_SOURCES) ../app/$(ComponentBuildDir)
+	$(RPCGEN) $(RPCGENFLAGS) -h ../app/webpa_rpc.x > ../app/webpa_rpc.h
+	$(RPCGEN) $(RPCGENFLAGS) -m ../app/webpa_rpc.x > ../app/webpa_rpc_server_stubs.c
+	$(RPCGEN) $(RPCGENFLAGS) -c ../app/webpa_rpc.x > ../app/webpa_rpc_xdr.c
+	$(RPCGEN) $(RPCGENFLAGS) -l ../app/webpa_rpc.x > ../app/webpa_rpc_clnt.c
 
 install:
 	@echo "Installing wal Installables"
