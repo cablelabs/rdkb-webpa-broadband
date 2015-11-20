@@ -16,19 +16,19 @@ target := $(ComponentBuildDir)/webpa
 source_files := $(call add_files_from_base,,'*.c')
 obj_files := $(addprefix $(ComponentBuildDir)/, $(source_files:%.c=%.o))
 -include $(obj_files:.o=.d)
-$(target): $(obj_files)
 
+$(target): $(obj_files)
 
 #
 #	Build targets
 #
-all: $(target) install
+all: clean $(target) install
 
 .PHONY: all clean
 
 clean:
+	@echo "Cleaning WebPA wal/app"
 	rm -Rf $(ComponentBuildDir)
-
 
 install:
 	@echo "Installing webpa Installables"

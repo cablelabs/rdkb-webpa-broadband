@@ -20,8 +20,45 @@ static void sig_handler(int sig);
 /*----------------------------------------------------------------------------*/
 /*                             External Functions                             */
 /*----------------------------------------------------------------------------*/
+int WebPA_ClientConnector_Start();
+
+// use this to send messages to clients
+int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, int n);
+
+// messages coming from clients show up here
+static void ClientMessageHandler(int n, char const* buff)
+{
+  if (n > 256)
+    printf("got1: '%.*s'\n", 64, buff);
+  else
+    printf("got2: '%.*s'\n", n, buff);
+}
+
+static void* sendMessage(void* argp)
+{
+  int i;
+  int count;
+  char buff[512];
+
+  i = 0;
+  count = 1;
+
+  while (1)
+  {
+    memset(buff, 0, sizeof(buff));
+    sprintf(buff, "%08d", count++);
+
+    for (i = 8; i < sizeof(buff); ++i)
+      buff[i] = 'a';
+    
+    WebPA_ClientConnector_DispatchMessage("iot", buff, strlen(buff));
+    sleep(1);
+  }
+}
+
 int main()
 {
+        //pthread_t thr;
 	// Initialize logger
 	LOGInit();
 
@@ -42,7 +79,14 @@ int main()
 	WalInfo("********** Starting component: %s **********\n ", pComponentName); 
 	msgBusInit(pComponentName);
 	WALInit();
-	createSocketConnection();
+        createSocketConnection();
+
+        //Test rpc
+        WebPA_ClientConnector_SetDispatchCallback(&ClientMessageHandler);
+        WebPA_ClientConnector_Start();
+        // pthread_create(&thr, NULL, &sendMessage, NULL);
+
+
 	while(1);
 	return 1;
 }
