@@ -1028,7 +1028,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 static void initApplyWiFiSettings()
 {
 	int err = 0;
-	pthread_t *applySettingsThreadId = NULL;
+	pthread_t applySettingsThreadId;
 	WalPrint("============ initApplySettings ==============\n");
 	err = pthread_create(&applySettingsThreadId, NULL, applyWiFiSettingsTask, NULL);
 	if (err != 0) 
@@ -1593,6 +1593,9 @@ void _WEBPA_LOG(unsigned int level, const char *msg, ...)
 		}
 		va_end(arg);
 		RDK_LOG(rdkLogLevel, "LOG.RDK.WEBPA", pTempChar);
+	}
+	if( pTempChar)
+	{
 		free(pTempChar);
 	}
 }
