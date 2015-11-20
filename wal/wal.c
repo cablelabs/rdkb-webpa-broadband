@@ -1564,7 +1564,7 @@ void LOGInit()
 void _WEBPA_LOG(unsigned int level, const char *msg, ...)
 {
 	va_list arg;
-	char*   pTempChar = (char*)malloc(4096);
+	char *pTempChar = NULL;
 	int ret = 0;
 	unsigned int rdkLogLevel = LOG_DEBUG;
 
@@ -1583,20 +1583,21 @@ void _WEBPA_LOG(unsigned int level, const char *msg, ...)
 			break;
 	}
 
-	if( pTempChar && (rdkLogLevel <= 4) )
+	if( rdkLogLevel <= LOG_INFO )
 	{
-		va_start(arg, msg);
-		ret = vsnprintf(pTempChar, 4096, msg,arg);
-		if(ret < 0)
+		pTempChar = (char *)malloc(4096);
+		if(pTempChar)
 		{
-			perror(pTempChar);
+			va_start(arg, msg);
+			ret = vsnprintf(pTempChar, 4096, msg,arg);
+			if(ret < 0)
+			{
+				perror(pTempChar);
+			}
+			va_end(arg);
+			RDK_LOG(rdkLogLevel, "LOG.RDK.WEBPA", pTempChar);
+			WAL_FREE(pTempChar);
 		}
-		va_end(arg);
-		RDK_LOG(rdkLogLevel, "LOG.RDK.WEBPA", pTempChar);
-	}
-	if( pTempChar)
-	{
-		free(pTempChar);
 	}
 }
 
