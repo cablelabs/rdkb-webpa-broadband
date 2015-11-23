@@ -11,6 +11,7 @@
 #include <rpc/pmap_clnt.h>
 #include <time.h>
 #include <unistd.h>
+#include "wal.h"
 
 #define MAX_CLIENTS 8
 
@@ -58,6 +59,7 @@ int WebPA_ClientConnector_SetDispatchCallback(WebPA_ClientConnector_Dispatcher c
   pthread_mutex_lock(&mutex);
   message_dispatch_callback = callback;
   pthread_mutex_unlock(&mutex);
+  WalInfo("WebPA_ClientConnector_SetDispatchCallback: Successfully set the callback function\n");
 }
 
 static void WebPA_Server_ClearPendingSignal(int signum)
@@ -86,7 +88,7 @@ static int getSocketFd()
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if(sockfd < 0)
   {
-    printf("Error sockfd\n");
+    WalError("Error sockfd\n");
     exit(1);
   }
   bzero((char *)&servAddr, sizeof(servAddr));
@@ -97,7 +99,7 @@ static int getSocketFd()
   
   if(bind(sockfd, (struct sockaddr *) &servAddr, sizeof(servAddr)) < 0 )
   {
-    perror("Error sockfd bind\n");
+    WalError("Error sockfd bind\n");
     exit(1);    
   }
   return sockfd;
@@ -110,13 +112,15 @@ static void* WebPA_Server_Run(void* argp)
   (void) argp;
 
   int sock = getSocketFd();
-  
+
+
+  WalInfo("Entering WebPA_Server_Run thread\n");
   pmap_unset(WEBPA_PROG, WEBPA_VERS);
   //xprt = svctcp_create(RPC_ANYSOCK, 0, 0); // to create (bind) socket first
   xprt = svctcp_create(sock, 0, 0); // to create (bind) socket first
   if (!xprt)
   {
-    printf("can't create service\n");
+    WalError("can't create service\n");
     pthread_exit(1);
     // TODO
   }
@@ -134,7 +138,18 @@ static void* WebPA_Server_Run(void* argp)
 
 int WebPA_ClientConnector_Start()
 {
-  pthread_create(&server_thread, NULL, &WebPA_Server_Run, NULL);
+  int err = 0;
+
+  err = pthread_create(&server_thread, NULL, WebPA_Server_Run, NULL);
+  if (err != 0) 
+  {
+    WalError("Error creating WebPA_Server_Run thread :[%s]\n", strerror(err));
+  }
+  else
+  {
+    WalInfo("WebPA_Server_Run thread created Successfully\n");
+  }
+
   return 0;
 }
 
@@ -148,7 +163,7 @@ int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, i
   {
     if (clients[i] && WebPA_Client_IsMatch(clients[i], topic))
     {
-      printf("Match found clients[%d]->topic %s \n", i,clients[i]->topic);
+      WalInfo("Match found clients[%d]->topic %s \n", i,clients[i]->topic);
       //WebPA_Client_SendMessage(clients[i], buff, n);
       WebPA_Client_EnqueueMessage(clients[i], buff, n);
     }
@@ -218,7 +233,7 @@ static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff
     
     pthread_sigmask(SIG_BLOCK, &mask, &old_mask);
     
-    printf("Sending message to client: %s len: %d data: %s\n", c->topic, req.data.data_len, req.data.data_val);
+    WalInfo("Sending message to client: %s len: %d data: %s\n", c->topic, req.data.data_len, req.data.data_val);
     st = clnt_call(c->clnt, WEBPA_SEND_MESSAGE, (xdrproc_t) xdr_webpa_send_message_request,
         (caddr_t) &req, (xdrproc_t) xdr_webpa_send_message_response, (caddr_t) &res, timeout);
     
@@ -235,7 +250,7 @@ static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff
     if (c->clnt)
     {
       char const* s = clnt_sperror(c->clnt, "failed to send message");
-      printf("%s\n", s);
+      WalError("%s\n", s);
     }
   }
   
@@ -308,7 +323,7 @@ static void* WebPA_ServiceClient(void* argp)
     if (!c->clnt)
     {
       char const* s = clnt_spcreateerror(c->host);
-      printf("clnt_create failed: %s\n", s);
+      WalError("clnt_create failed: %s\n", s);
       pthread_mutex_unlock(&c->mutex);
       break;
     }
@@ -349,7 +364,7 @@ static void* WebPA_ServiceClient(void* argp)
         WebPA_Server_ClearPendingSignal(SIGPIPE);
 
         char const* s = clnt_sperrno(st);
-        printf("clnt_call failed: %s\n", s);
+        WalError("clnt_call failed: %s\n", s);
         pthread_mutex_unlock(&c->mutex);       
         break;
       }
@@ -412,7 +427,7 @@ webpa_register_1_svc(webpa_register_request req, webpa_register_response* res, s
           (strcmp(clients[i]->proto, req.proto) == 0))
       {
         // TODO: already registered???
-        printf("Client already registered\n");
+        WalInfo("Client already registered\n");
       }
     }
   }
@@ -427,9 +442,9 @@ webpa_register_1_svc(webpa_register_request req, webpa_register_response* res, s
     client = WebPA_Client_Create(&req);
   
   if(client)
-    printf("client created with topic: %s\n",client->topic);
+    WalInfo("client created with topic: %s\n",client->topic);
   else
-    printf("client not created \n");
+    WalError("client not created \n");
   
   clients[index] = client;
   pthread_mutex_unlock(&mutex);

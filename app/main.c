@@ -17,45 +17,14 @@
 static void __terminate_listener(int value);
 static void sig_handler(int sig);
 
+extern WAL_STATUS WebpaRpcInit();
+
 /*----------------------------------------------------------------------------*/
 /*                             External Functions                             */
 /*----------------------------------------------------------------------------*/
-int WebPA_ClientConnector_Start();
-
-// use this to send messages to clients
-int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, int n);
-
-// messages coming from clients show up here
-static void ClientMessageHandler(int n, char const* buff)
-{
-  if (n > 256)
-    printf("got big message: '%.*s'\n", 64, buff);
-  else
-    printf("got: '%.*s'\n", n, buff);
-}
-
-extern int getClientReadyStatus();
-static void* sendMessage(void* argp)
-{
-  int i;
-  int count;
-  char buff[512];
-
-  i = 0;
-  count = 1;
-
-  while (1)
-  {
-    memset(buff, 0, sizeof(buff));
-    sprintf(buff, "Webpaserver says i am here %08d", count++);
-    WebPA_ClientConnector_DispatchMessage("iot", buff, strlen(buff)); 
-    sleep(1);
-  }
-}
 
 int main()
 {
-//	pthread_t thr;
 	// Initialize logger
 	LOGInit();
 
@@ -74,13 +43,10 @@ int main()
 
 	const char *pComponentName = WEBPA_COMPONENT_NAME;
 	WalInfo("********** Starting component: %s **********\n ", pComponentName); 
+	WebpaRpcInit();
 	msgBusInit(pComponentName);
 	WALInit();
 	createSocketConnection();
-	//Test rpc
-	WebPA_ClientConnector_SetDispatchCallback(&ClientMessageHandler);
-	WebPA_ClientConnector_Start();
-//	pthread_create(&thr, NULL, &sendMessage, NULL);
 
 	while(1);
 	return 1;
