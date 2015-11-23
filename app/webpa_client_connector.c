@@ -5,14 +5,22 @@
  */
 #include "webpa_rpc.h"
 
+#include <errno.h>
 #include <pthread.h>
 #include <signal.h>
 #include <rpc/pmap_clnt.h>
+#include <time.h>
 #include <unistd.h>
 
 #define MAX_CLIENTS 8
 
 typedef void (*WebPA_ClientConnector_Dispatcher)(int n, char const* buff);
+typedef struct _message_queue
+{
+  char*                  buff;
+  int                    n;
+  struct _message_queue* next;
+} message_queue;
 
 void webpa_prog_1(struct svc_req *rqstp, register SVCXPRT *transp);
 
@@ -31,6 +39,8 @@ typedef struct
   CLIENT*           clnt;
   int               keep_alive_interval;
   pthread_mutex_t   mutex;
+  pthread_cond_t    cond;
+  message_queue*    queue;
 } WebPA_Client;
 
 
@@ -38,6 +48,7 @@ static WebPA_Client* clients[MAX_CLIENTS];
 static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static int WebPA_Client_IsMatch(WebPA_Client* c, char const* topic);
 static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff, int n);
+static void WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n);
 
 static pthread_t server_thread;
 static WebPA_ClientConnector_Dispatcher message_dispatch_callback = NULL;
@@ -106,17 +117,15 @@ static void* WebPA_Server_Run(void* argp)
   if (!xprt)
   {
     printf("can't create service\n");
-    exit(1);
-
+    pthread_exit(1);
     // TODO
   }
 
   if (!svc_register(xprt, WEBPA_PROG, WEBPA_VERS, webpa_prog_1, IPPROTO_TCP))
   {
     fprintf (stderr, "%s", "unable to register (WEBPA_PROG, WEBPA_VERS, tcp).");
-    exit(1);
-
-    // TOOD:
+    pthread_exit(1);
+    // TODO:
   }
 
   svc_run();
@@ -134,14 +143,14 @@ int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, i
 {
   int i;
 
-  printf("WebPA_ClientConnector_DispatchMessage: %d\n", n);
   pthread_mutex_lock(&mutex);
   for (i = 0; i < MAX_CLIENTS; ++i)
   {
     if (clients[i] && WebPA_Client_IsMatch(clients[i], topic))
     {
-      printf("Match found sending message\n");
-      WebPA_Client_SendMessage(clients[i], buff, n);
+      printf("Match found clients[%d]->topic %s \n", i,clients[i]->topic);
+      //WebPA_Client_SendMessage(clients[i], buff, n);
+      WebPA_Client_EnqueueMessage(clients[i], buff, n);
     }
   }
   pthread_mutex_unlock(&mutex);
@@ -155,20 +164,48 @@ static int WebPA_Client_IsMatch(WebPA_Client* c, char const* topic)
   return strcmp(c->topic, topic) == 0;
 }
 
+void WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n)
+{
+  message_queue* p;
+  message_queue* item;
+  
+  item = (message_queue *) malloc(sizeof(message_queue));
+  item->n = n;
+  item->buff = (char *) malloc(n);
+  item->next = NULL;
+  memcpy(item->buff, buff, n);
+
+  pthread_mutex_lock(&c->mutex);
+  if (!c->queue)
+  {
+    c->queue = item;
+  }
+  else
+  {
+    p = c->queue;
+    while (p->next)
+        p = p->next;
+    p->next = item;
+  }
+  pthread_mutex_unlock(&c->mutex);
+  pthread_cond_signal(&c->cond);
+}
+
 static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff, int n)
 {
   enum clnt_stat              st;
   webpa_send_message_request  req;
   webpa_send_message_response res;
   struct timeval              timeout;
+  
+  res.ack = 0;
+  req.data.data_len = n;
+  req.data.data_val = (char *) malloc(n);
+  memcpy(req.data.data_val, buff, n);
+  timeout.tv_sec = 2;
+  timeout.tv_usec = 0;
 
   st = RPC_CANTSEND;
-
-  printf("WebPA_Client_SendMessage \n");
-  pthread_mutex_lock(&c->mutex);
-
-    // using clnt_call() directly to control timeout
-    // st = webpa_send_message_1(req, &res, c->clnt);
 
   if (c->clnt)
   {
@@ -178,28 +215,21 @@ static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff
     sigemptyset(&mask);
     sigemptyset(&old_mask);
     sigaddset(&mask, SIGPIPE);
-
-    res.ack = 0;
-    req.data.data_len = n;
-    req.data.data_val = malloc(n);
-    memcpy(req.data.data_val, buff, n);
-    timeout.tv_sec = 2;
-    timeout.tv_usec = 0;
-
+    
     pthread_sigmask(SIG_BLOCK, &mask, &old_mask);
-
+    
+    printf("Sending message to client: %s len: %d data: %s\n", c->topic, req.data.data_len, req.data.data_val);
     st = clnt_call(c->clnt, WEBPA_SEND_MESSAGE, (xdrproc_t) xdr_webpa_send_message_request,
         (caddr_t) &req, (xdrproc_t) xdr_webpa_send_message_response, (caddr_t) &res, timeout);
-
+    
     // clear SIGPIPE before unblocking
     if (st != RPC_SUCCESS)
       WebPA_Server_ClearPendingSignal(SIGPIPE);
-    else
-      printf("clnt_call failed: %d\n", st);
 
     pthread_sigmask(SIG_SETMASK, &old_mask, NULL);
   }
 
+ 
   if (st != RPC_SUCCESS)
   {
     if (c->clnt)
@@ -207,14 +237,8 @@ static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff
       char const* s = clnt_sperror(c->clnt, "failed to send message");
       printf("%s\n", s);
     }
-    else
-    {
-      printf("null client, no send");
-    }
   }
   
-  pthread_mutex_unlock(&c->mutex);
-
   return st;
 }
 
@@ -257,9 +281,10 @@ static WebPA_Client* WebPA_Client_Create(webpa_register_request* req)
 static void* WebPA_ServiceClient(void* argp)
 {
   int                       i;
+  int                       n;
   WebPA_Client*             c;
   enum clnt_stat            st;
-  struct timeval            timeout;
+  struct timespec           ts;
 
   // prevent SIGPIPE when client disconnects
   {
@@ -278,26 +303,46 @@ static void* WebPA_ServiceClient(void* argp)
   {
     pthread_mutex_lock(&c->mutex);
     if (!c->clnt)
-    {
-      printf("clnt_create( %s, %d, %d, %s)\n",
-        c->host, c->prog_num, c->prog_vers, c->proto);
       c->clnt = clnt_create(c->host, c->prog_num, c->prog_vers, c->proto);
-      printf("after clnt_create: %p\n", c->clnt);
-    }
-    
+
     if (!c->clnt)
     {
       char const* s = clnt_spcreateerror(c->host);
       printf("clnt_create failed: %s\n", s);
+      pthread_mutex_unlock(&c->mutex);
       break;
     }
     else
     {
-      timeout.tv_sec = 1;
+      struct timeval timeout;
+      timeout.tv_sec = 2;
       timeout.tv_usec = 0;
-      
-      st = clnt_call(c->clnt, NULLPROC, (xdrproc_t) xdr_void, (caddr_t) NULL,
-          (xdrproc_t) xdr_void, (caddr_t) NULL, timeout);
+
+      clock_gettime(CLOCK_REALTIME, &ts);
+      ts.tv_sec += 5;
+
+      n = pthread_cond_timedwait(&c->cond, &c->mutex, &ts);
+      if (n == ETIMEDOUT)
+      {
+          st = clnt_call(c->clnt, NULLPROC, (xdrproc_t) xdr_void, (caddr_t) NULL,
+                  (xdrproc_t) xdr_void, (caddr_t) NULL, timeout);
+      }
+
+      if (c->queue)
+      {
+        message_queue* p;
+        message_queue* q = c->queue;
+        while (q)
+        {
+          st = WebPA_Client_SendMessage(c, q->buff, q->n);
+          p = q;
+          q = q->next;
+        
+          free(p->buff);
+          free(p);
+        }
+        c->queue = NULL;
+      }
 
       if (st != RPC_SUCCESS)
       {
@@ -305,13 +350,11 @@ static void* WebPA_ServiceClient(void* argp)
 
         char const* s = clnt_sperrno(st);
         printf("clnt_call failed: %s\n", s);
-
+        pthread_mutex_unlock(&c->mutex);       
         break;
       }
     }
     pthread_mutex_unlock(&c->mutex);
-
-    sleep(c->keep_alive_interval);
   }
 
   pthread_mutex_lock(&mutex);
@@ -321,8 +364,7 @@ static void* WebPA_ServiceClient(void* argp)
       clients[i] = NULL;
   }
   pthread_mutex_unlock(&mutex);
-  
-  printf("WebPA_Client_Destroy: %s \n", c->topic);
+
   WebPA_Client_Destroy(c);
 
   return NULL;
@@ -354,7 +396,7 @@ webpa_register_1_svc(webpa_register_request req, webpa_register_response* res, s
   int             i;
   int             index;
   pthread_t       thr;
-  WebPA_Client*   client;
+  WebPA_Client*   client = NULL;
 
   (void) svc;
 
@@ -370,6 +412,7 @@ webpa_register_1_svc(webpa_register_request req, webpa_register_response* res, s
           (strcmp(clients[i]->proto, req.proto) == 0))
       {
         // TODO: already registered???
+        printf("Client already registered\n");
       }
     }
   }
@@ -388,7 +431,7 @@ webpa_register_1_svc(webpa_register_request req, webpa_register_response* res, s
   else
     printf("client not created \n");
   
-  clients[i] = client;
+  clients[index] = client;
   pthread_mutex_unlock(&mutex);
 
   if (index == -1)
