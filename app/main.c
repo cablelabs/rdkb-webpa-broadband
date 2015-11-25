@@ -26,6 +26,7 @@ extern WAL_STATUS WebpaRpcInit();
 int main()
 {
 	// Initialize logger
+
 	LOGInit();
 
 	signal(SIGTERM, sig_handler);
@@ -43,9 +44,11 @@ int main()
 
 	const char *pComponentName = WEBPA_COMPONENT_NAME;
 	WalInfo("********** Starting component: %s **********\n ", pComponentName); 
-	WebpaRpcInit();
+
 	msgBusInit(pComponentName);
 	WALInit();
+  
+	WebpaRpcInit();
 	createSocketConnection();
 
 	while(1);
