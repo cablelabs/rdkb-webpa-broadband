@@ -22,9 +22,7 @@
 /*----------------------------------------------------------------------------*/
 /*                            File Scoped Variables                           */
 /*----------------------------------------------------------------------------*/
-static pthread_mutex_t rpcSendReceiveMutex = PTHREAD_MUTEX_INITIALIZER;
-static pthread_cond_t rpcSendReceiveCond = PTHREAD_COND_INITIALIZER;
-static char* rpcResponse = NULL;
+static pthread_mutex_t rpcNotifyMutex = PTHREAD_MUTEX_INITIALIZER;
 
 /*----------------------------------------------------------------------------*/
 /*                             Function Prototypes                            */
@@ -38,29 +36,7 @@ extern int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* 
 /*----------------------------------------------------------------------------*/
 /*                             External Functions                             */
 /*----------------------------------------------------------------------------*/
-#if 0
-//function to test echo message
-static void sendMessage(void)
-{
-	int len = 0;
-	char buff[512];
-	int cnt = 0; 
-  
-	while(1)
-	{
-		memset(buff, 0, sizeof(buff));
-		sprintf(buff, "WebpaServer send message %d ",cnt++);
-		len = strlen(buff);
-		buff[len-1] = '\0';
-		WebPA_ClientConnector_DispatchMessage("iot", buff, len);
-		sleep(5);
-		if(cnt > 256)
-		{
-			cnt = 0;
-    		}		
-  	}
-}
-#endif
+
 /**
  * @brief Initializes WebPA RPC.
  *
@@ -68,13 +44,10 @@ static void sendMessage(void)
  */
 WAL_STATUS WebpaRpcInit()
 {
-#if 0
-	//pthread_t sender;
+#ifdef WEBPA_ENABLE_RPC
 	WebPA_ClientConnector_SetDispatchCallback(&receiveRpcMsgCB);
 	WebPA_ClientConnector_Start();
-	printf("Successfully initialized WebPA RPC\n");
-
-	//pthread_create(&sender, NULL,&sendMessage, NULL);
+	WalInfo("Successfully initialized WebPA RPC\n");
 #else
 	WalInfo("WebPA RPC interface is disabled\n");
 #endif
@@ -85,35 +58,31 @@ WAL_STATUS WebpaRpcInit()
  * @brief sendIoTMessage interface sends message to IoT. 
  *
  * @param[in] msg Message to be sent to IoT.
- * @param[out] ret Response from IoT.
+ * @return WAL_STATUS
  */
-void sendIoTMessage(void *msg, void *ret)
+WAL_STATUS sendIoTMessage(const void *msg)
 {
 #ifdef WEBPA_ENABLE_RPC
+	WAL_STATUS ret = WAL_FAILURE;
+
 	if(msg != NULL)
 	{
-		WebPA_ClientConnector_DispatchMessage("iot", (char*)msg, strlen(msg));
+		if(WebPA_ClientConnector_DispatchMessage("iot", (char*)msg, strlen(msg)) == 0)
+		{
+			WalInfo("sendIoTMessage(): Success\n");
+			ret = WAL_SUCCESS;
+		}
+		else
+		{
+			WalError("sendIoTMessage(): Failed to send message to IoT");
+		}
 	}
 	else
 	{
-		WalError("sendIoTMessage: Null Message");
+		WalError("sendIoTMessage(): Null Message");
 	}
 
-	pthread_mutex_lock(&rpcSendReceiveMutex);
-	while(!rpcResponse)
-	{
-		WalInfo("sendIoTMessage() is waiting on rpcSendReceiveCond\n");
-		pthread_cond_wait(&rpcSendReceiveCond, &rpcSendReceiveMutex);
-	}
-
-	ret = malloc(MAX_RPC_MSG_LEN);
-	strncpy((char *)ret, rpcResponse, MAX_RPC_MSG_LEN);
-	((char*)ret)[MAX_RPC_MSG_LEN-1] = '\0';
-	WAL_FREE(rpcResponse);
-	rpcResponse = NULL;
-	pthread_mutex_unlock(&rpcSendReceiveMutex);
-
-	WalInfo("sendIoTMessage() ret: [%zu]%s\n", strlen((char*)ret), (char*)ret);
+	return ret;
 #endif
 }
 
@@ -124,10 +93,16 @@ void sendIoTMessage(void *msg, void *ret)
 void receiveRpcMsgCB(int n, char const* buff)
 {
 #ifdef WEBPA_ENABLE_RPC
-	WalInfo("Received message: '%.*s'\n", n, buff);
-	pthread_mutex_lock(&rpcSendReceiveMutex);
-	rpcResponse = buff;
-	pthread_cond_signal(&rpcSendReceiveCond);
-	pthread_mutex_unlock(&rpcSendReceiveMutex);
+	if(buff != NULL)
+	{
+		WalInfo("Received message: [%d]'%.*s'\n", n, n, buff);
+		pthread_mutex_lock(&rpcNotifyMutex);
+		sendIoTNotification((void*)buff, n);
+		pthread_mutex_unlock(&rpcNotifyMutex);
+	}
+	else
+	{
+		WalError("Received NULL message from IoT\n");
+	}
 #endif
 }
