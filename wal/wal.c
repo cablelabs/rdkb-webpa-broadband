@@ -565,6 +565,41 @@ static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* u
 	}
 }
 
+/**
+ * @brief sendIoTNotification function to send IoT notification
+ *
+ * @param[in] iotMsg IoT notification message
+ * @param[in] size Size of IoT notification message
+ */
+void sendIoTNotification(void* iotMsg, int size)
+{
+	char* str = NULL;
+
+	ParamNotify *paramNotify = (ParamNotify *) malloc(sizeof(ParamNotify));
+	paramNotify->paramName = (char *) malloc(8);
+	strncpy(paramNotify->paramName, "IOT", 8);
+	paramNotify->oldValue = NULL;
+
+	if((str = (char*) malloc(size+1)) == NULL)
+	{
+		WalError("Error allocating memory in sendIoTNotification fn\n");
+		WAL_FREE(iotMsg);
+		return;
+	}
+	sprintf(str, "%.*s", size, (char *)iotMsg);
+	//WAL_FREE(iotMsg); //TODO: Free memory?
+	paramNotify->newValue = str;
+	paramNotify->type = WAL_STRING;
+	paramNotify->changeSource = CHANGED_BY_UNKNOWN;
+
+	WalInfo("Notification Event from IoT: Parameter Name: %s, New Value: %s, Data Type: %d, Change Source: %d\n", paramNotify->paramName, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
+
+	if(notifyCbFn != NULL)
+	{
+		(*notifyCbFn)(paramNotify);
+	}
+}
+
 static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID)
 {
 	PARAMVAL_CHANGE_SOURCE source;
