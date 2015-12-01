@@ -7,11 +7,12 @@
  */
 #include "wal.h"
 #include <pthread.h>
+#include <errno.h>
+
 
 /*----------------------------------------------------------------------------*/
 /*                                   Macros                                   */
 /*----------------------------------------------------------------------------*/
-#define MAX_RPC_MSG_LEN			256
 //#define WEBPA_ENABLE_RPC
 
 /*----------------------------------------------------------------------------*/
@@ -31,7 +32,10 @@ void receiveRpcMsgCB(int n, char const* buff);
 
 extern int WebPA_ClientConnector_Start();
 //extern int WebPA_ClientConnector_SetDispatchCallback(WebPA_ClientConnector_Dispatcher callback);
-extern int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, int n);
+extern WAL_STATUS WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, int n);
+extern WAL_STATUS msgStatus;
+extern pthread_mutex_t msgStatusMutex;
+extern pthread_cond_t msgStatusCond;
 
 /*----------------------------------------------------------------------------*/
 /*                             External Functions                             */
@@ -64,18 +68,46 @@ WAL_STATUS sendIoTMessage(const void *msg)
 {
 #ifdef WEBPA_ENABLE_RPC
 	WAL_STATUS ret = WAL_FAILURE;
+	struct timespec     ts;
+	struct timespec     now;
+	int n;
+
+	memset(&ts, 0, sizeof(struct timespec));
+	memset(&now, 0, sizeof(struct timespec));
 
 	if(msg != NULL)
 	{
-		if(WebPA_ClientConnector_DispatchMessage("iot", (char*)msg, strlen(msg)) == 0)
+		pthread_mutex_lock(&msgStatusMutex);
+	
+		ret = WebPA_ClientConnector_DispatchMessage("iot", (char*)msg, strlen(msg));
+
+		if(ret != WAL_SUCCESS)
 		{
-			WalInfo("sendIoTMessage(): Success\n");
-			ret = WAL_SUCCESS;
+			WalError("sendIoTMessage(): DispatchMessage Failed\n");
+			pthread_mutex_unlock(&msgStatusMutex);
+			return ret;
 		}
 		else
 		{
-			WalError("sendIoTMessage(): Failed to send message to IoT");
+			WalPrint("sendIoTMessage(): Dispatch messge Success\n");
 		}
+
+		clock_gettime(CLOCK_REALTIME, &now);
+		ts.tv_sec = now.tv_sec + 2;
+
+		n = pthread_cond_timedwait(&msgStatusCond, &msgStatusMutex, &ts);
+
+		if(n == ETIMEDOUT)
+		{
+			ret = WAL_ERR_TIMEOUT;
+			WalError("sendIoTMessage(): Timedout");
+		}
+		else
+		{
+			ret = msgStatus;
+			WalInfo("sendIoTMessage(): Message status %d\n", ret);
+		}
+		pthread_mutex_unlock(&msgStatusMutex);
 	}
 	else
 	{
