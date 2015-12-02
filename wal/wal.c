@@ -223,15 +223,15 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 	char compName[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	componentStruct_t ** ppComponents = NULL;	
-	strcpy(l_Subsystem, "eRT.");
-	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
+	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
+	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr),"%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 	
 	for(cnt1 = 0; cnt1 < paramCount; cnt1++)
 	{
 		matchFlag = 0;
 
 		// Get the matching component index from cache
-		strcpy(parameterName,paramName[cnt1]);   
+		walStrncpy(parameterName,paramName[cnt1],sizeof(parameterName));
 		index = getComponentInfoFromCache(parameterName, objectName, compName, dbusPath);         	
 		
 		// Cannot identify the component from cache, make DBUS call to fetch component
@@ -240,7 +240,7 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 			WalPrint("in if for size >2\n");
 			// GET Component for parameter from stack
 			WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
-			strcpy(parameterName,paramName[cnt1]);
+			walStrncpy(parameterName,paramName[cnt1],sizeof(parameterName));
 			retIndex = IndexMpa_WEBPAtoCPE(parameterName);
 			if(retIndex == -1)
 			{
@@ -257,8 +257,8 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 			
 			if (ret == CCSP_SUCCESS && size == 1)
 			{	
-				strcpy(compName,ppComponents[0]->componentName);
-				strcpy(dbusPath,ppComponents[0]->dbusPath);
+				walStrncpy(compName,ppComponents[0]->componentName,sizeof(compName));
+				walStrncpy(dbusPath,ppComponents[0]->dbusPath,sizeof(dbusPath));
 				free_componentStruct_t(bus_handle, size, ppComponents);
 			}
 			else
@@ -277,14 +277,14 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 			ParamGroup = (ParamCompList *) malloc(sizeof(ParamCompList));
 		   	ParamGroup[0].parameterCount = 1;
 		   	ParamGroup[0].comp_name = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
-			strcpy(ParamGroup[0].comp_name, compName);
+			walStrncpy(ParamGroup[0].comp_name, compName,MAX_PARAMETERNAME_LEN/2);
 		   	ParamGroup[0].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
-			strcpy(ParamGroup[0].dbus_path, dbusPath);
+			walStrncpy(ParamGroup[0].dbus_path, dbusPath,MAX_PARAMETERNAME_LEN/2);
 
 			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)
 			ParamGroup[0].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));			   
 		   	ParamGroup[0].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
-		   	strcpy(ParamGroup[0].parameterName[0],paramName[cnt1]);
+		   	walStrncpy(ParamGroup[0].parameterName[0],paramName[cnt1],MAX_PARAMETERNAME_LEN);
 
 		   	compCount++;
 		}
@@ -303,7 +303,7 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 				
 					ParamGroup[cnt2].parameterName[subParamCount-1] = (char *) malloc(MAX_PARAMETERNAME_LEN);
 						
-					strcpy(ParamGroup[cnt2].parameterName[subParamCount-1],paramName[cnt1]);
+					walStrncpy(ParamGroup[cnt2].parameterName[subParamCount-1],paramName[cnt1],MAX_PARAMETERNAME_LEN);
 					WalPrint("ParamGroup[%d].parameterName :%s\n",cnt2,ParamGroup[cnt2].parameterName[subParamCount-1]);
 						
 					matchFlag=1;
@@ -317,14 +317,14 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		      	ParamGroup =  (ParamCompList *) realloc(ParamGroup,sizeof(ParamCompList) * (compCount + 1));
 		      	ParamGroup[compCount].parameterCount = 1;
 		      	ParamGroup[compCount].comp_name = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
-				strcpy(ParamGroup[compCount].comp_name, compName);
+				walStrncpy(ParamGroup[compCount].comp_name, compName,MAX_PARAMETERNAME_LEN/2);
 		      	ParamGroup[compCount].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
-				strcpy(ParamGroup[compCount].dbus_path, dbusPath);
+				walStrncpy(ParamGroup[compCount].dbus_path, dbusPath,MAX_PARAMETERNAME_LEN/2);
 
 			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)	  
 		      	ParamGroup[compCount].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));
 		        ParamGroup[compCount].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
-		      	strcpy(ParamGroup[compCount].parameterName[0],paramName[cnt1]);
+		      	walStrncpy(ParamGroup[compCount].parameterName[0],paramName[cnt1],MAX_PARAMETERNAME_LEN);
 				      
 		       	WalPrint("ParamGroup[%d]->comp_name :%s\n",compCount,ParamGroup[compCount].comp_name);
 		      	WalPrint("ParamGroup[%d].parameterName :%s\n",compCount,ParamGroup[compCount].parameterName[0]);
@@ -577,7 +577,7 @@ void sendIoTNotification(void* iotMsg, int size)
 
 	ParamNotify *paramNotify = (ParamNotify *) malloc(sizeof(ParamNotify));
 	paramNotify->paramName = (char *) malloc(8);
-	strncpy(paramNotify->paramName, "IOT", 8);
+	walStrncpy(paramNotify->paramName, "IOT", 8);
 	paramNotify->oldValue = NULL;
 
 	if((str = (char*) malloc(size+1)) == NULL)
@@ -654,9 +654,9 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 	componentStruct_t ** ppComponents = NULL;
 	parameterValStruct_t **parameterval = NULL;
 	parameterValStruct_t *parametervalError = NULL;
-	strcpy(l_Subsystem, "eRT.");
-	strcpy(paramName, pParameterName);
-	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
+	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
+	walStrncpy(paramName, pParameterName,sizeof(paramName));
+	snprintf(dst_pathname_cr,sizeof(dst_pathname_cr), "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 	IndexMpa_WEBPAtoCPE(paramName);
 	ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
 			dst_pathname_cr, paramName, l_Subsystem, &ppComponents, &size);
@@ -675,7 +675,7 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 			parametervalError = (parameterValStruct_t *) malloc(sizeof(parameterValStruct_t));
 			parametervalError->parameterValue = NULL;
 			parametervalError->parameterName = (char *)malloc(sizeof(char)*MAX_PARAMETERNAME_LEN);
-			strcpy(parametervalError->parameterName,pParameterName);
+			walStrncpy(parametervalError->parameterName,pParameterName,MAX_PARAMETERNAME_LEN);
 			parametervalError->type = ccsp_string;
 			parametervalArr[0][0] = parametervalError;
 			*TotalParams = 1;
@@ -701,7 +701,7 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 		parametervalError = (parameterValStruct_t *) malloc(sizeof(parameterValStruct_t));
 		parametervalError->parameterValue = NULL;
 		parametervalError->parameterName = (char *)malloc(sizeof(char)*MAX_PARAMETERNAME_LEN);
-		strcpy(parametervalError->parameterName,pParameterName);
+		walStrncpy(parametervalError->parameterName,pParameterName,MAX_PARAMETERNAME_LEN);
 		parametervalError->type = ccsp_string;
 		parametervalArr[0][0] = parametervalError;
 		*TotalParams = 1;
@@ -816,9 +816,9 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 	char *p = &paramName;
 	
 	parameterAttributeStruct_t** ppAttrArray = NULL;
-	strcpy(l_Subsystem, "eRT.");
-	strcpy(paramName, pParameterName);
-	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
+	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
+	walStrncpy(paramName, pParameterName,sizeof(paramName));
+	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr), "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 
 	IndexMpa_WEBPAtoCPE(paramName);
 	ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
@@ -840,7 +840,7 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 			attr[0][0]->name = (char *) malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
 			attr[0][0]->value = (char *) malloc(sizeof(char) * MAX_PARAMETERVALUE_LEN);
 			sprintf(attr[0][0]->value, "%d", -1);
-			strcpy(attr[0][0]->name, pParameterName);
+			walStrncpy(attr[0][0]->name, pParameterName,MAX_PARAMETERNAME_LEN);
 			attr[0][0]->type = WAL_INT;
 			*TotalParams = 1;
 			WalError("Failed to GetValue for GetParamAttr ret : %d \n", ret);
@@ -857,7 +857,7 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 				attr[0][x]->value = (char *) malloc(sizeof(char) * MAX_PARAMETERVALUE_LEN);
 
 				IndexMpa_CPEtoWEBPA(&ppAttrArray[x]->parameterName);
-				strcpy(attr[0][x]->name, ppAttrArray[x]->parameterName);
+				walStrncpy(attr[0][x]->name, ppAttrArray[x]->parameterName,MAX_PARAMETERNAME_LEN);
 				sprintf(attr[0][x]->value, "%d", ppAttrArray[x]->notification);
 				attr[0][x]->type = WAL_INT;
 			}
@@ -872,7 +872,7 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 		attr[0][0]->name = (char *) malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
 		attr[0][0]->value = (char *) malloc(sizeof(char) * MAX_PARAMETERVALUE_LEN);
 		sprintf(attr[0][0]->value, "%d", -1);
-		strcpy(attr[0][0]->name, pParameterName);
+		walStrncpy(attr[0][0]->name, pParameterName,MAX_PARAMETERNAME_LEN);
 		attr[0][0]->type = WAL_INT;
 		*TotalParams = 1;
 		WalError("Parameter name is not supported.ret : %d\n", ret);
@@ -902,13 +902,13 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	char objectName[MAX_PARAMETERNAME_LEN] = { 0 };
 	unsigned int writeID = CCSP_COMPONENT_ID_WebPA;
 	
-	strcpy(l_Subsystem, "eRT.");
-	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
+	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
+	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr), "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 
 	parameterValStruct_t* val = (parameterValStruct_t*) malloc(sizeof(parameterValStruct_t) * paramCount);
 	memset(val,0,(sizeof(parameterValStruct_t) * paramCount));
 	
-	strcpy(paramName, paramVal[0].name);
+	walStrncpy(paramName, paramVal[0].name,sizeof(paramName));
 	retIndex = IndexMpa_WEBPAtoCPE(paramName);
 	if(retIndex== -1)
 	{
@@ -926,7 +926,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 		WalPrint("in if for size >2\n");
 		// GET Component for parameter from stack
 		WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
-		strcpy(paramName,paramVal[0].name);
+		walStrncpy(paramName,paramVal[0].name,sizeof(paramName));
 		retIndex = IndexMpa_WEBPAtoCPE(paramName);
 		if(retIndex == -1)
 		{
@@ -943,8 +943,8 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 		
 		if (ret == CCSP_SUCCESS && size == 1)
 		{	
-			strcpy(CompName,ppComponents[0]->componentName);
-			strcpy(dbusPath,ppComponents[0]->dbusPath);
+			walStrncpy(CompName,ppComponents[0]->componentName,sizeof(CompName));
+			walStrncpy(dbusPath,ppComponents[0]->dbusPath,sizeof(dbusPath));
 			free_componentStruct_t(bus_handle, size, ppComponents);
 		}
 		else
@@ -961,7 +961,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	for (cnt = 0; cnt < paramCount; cnt++) 
 	{
 	    	retIndex=0;
-		strcpy(paramName, paramVal[cnt].name);
+		walStrncpy(paramName, paramVal[cnt].name,sizeof(paramName));
 		retIndex = IndexMpa_WEBPAtoCPE(paramName);
 		if(retIndex == -1)
 		{
@@ -980,7 +980,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 			WalPrint("in if for size >2\n");
 			// GET Component for parameter from stack
 			WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
-			strcpy(paramName,paramVal[cnt].name);
+			walStrncpy(paramName,paramVal[cnt].name,sizeof(paramName));
 			retIndex = IndexMpa_WEBPAtoCPE(paramName);
 			if(retIndex == -1)
 			{
@@ -997,7 +997,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 			
 			if (ret == CCSP_SUCCESS && size == 1)
 			{	
-				strcpy(tempCompName,ppComponents[0]->componentName);
+				walStrncpy(tempCompName,ppComponents[0]->componentName,sizeof(tempCompName));
 				free_componentStruct_t(bus_handle, size, ppComponents);
 			}
 			else
@@ -1097,8 +1097,8 @@ static void *applyWiFiSettingsTask()
 	// Component cache index 0 maps to "Device.WiFi."
 	if(ComponentValArray[0].comp_name != NULL && ComponentValArray[0].dbus_path != NULL)
 	{				
-		strcpy(CompName,ComponentValArray[0].comp_name);
-		strcpy(dbusPath,ComponentValArray[0].dbus_path);
+		walStrncpy(CompName,ComponentValArray[0].comp_name,sizeof(CompName));
+		walStrncpy(dbusPath,ComponentValArray[0].dbus_path,sizeof(dbusPath));
 		WalPrint("CompName : %s dbusPath : %s\n",CompName,dbusPath);
 	
 
@@ -1322,9 +1322,9 @@ static int setParamAttributes(const char *pParameterName, const AttrVal *attArr)
 	attriStruct.notificationChanged = 1;
 	attriStruct.accessControlChanged = 0;
 
-	strcpy(l_Subsystem, "eRT.");
-	strcpy(paramName, pParameterName);
-	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
+	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
+	walStrncpy(paramName, pParameterName,sizeof(paramName));
+	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr), "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 
 	IndexMpa_WEBPAtoCPE(paramName);
 	ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
@@ -1417,7 +1417,7 @@ static int IndexMpa_WEBPAtoCPE(char *pParameterName)
 				{
 					if (IndexMap[j].WebPaInstanceNumber == instNum)
 					{
-						sprintf(pDmIntString, "%s.%d%s", CcspDmlName[i], IndexMap[j].CcspInstanceNumber, restDmlString);
+						snprintf(pDmIntString, sizeof(pDmIntString),"%s.%d%s", CcspDmlName[i], IndexMap[j].CcspInstanceNumber, restDmlString);
 						strcpy(pParameterName, pDmIntString);
 						matchFlag = 1;
 						break;
@@ -1483,7 +1483,7 @@ static void IndexMpa_CPEtoWEBPA(char **ppParameterName)
 								sizeof(char) * (dmlNameLen + MAX_PARAMETERNAME_LEN));
 						if (pDmIntString)
 						{
-							sprintf(pDmIntString, "%s.%d%s", CcspDmlName[i],
+							snprintf(pDmIntString, dmlNameLen + MAX_PARAMETERNAME_LEN ,"%s.%d%s", CcspDmlName[i],
 									IndexMap[j].WebPaInstanceNumber,
 									restDmlString);
 							WAL_FREE(pParameterName);
@@ -1557,7 +1557,7 @@ static void getObjectName(char *str, char *objectName, int objectLevel)
 {
 	char *tmpStr;
 	char localStr[MAX_PARAMETERNAME_LEN]={'\0'};
-	strcpy(localStr,str);
+	walStrncpy(localStr,str,sizeof(localStr));
 	int count = 1;
 	
 	if(localStr)
@@ -1694,15 +1694,15 @@ void WALInit()
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
 	componentStruct_t ** ppComponents = NULL;
 
-	strcpy(l_Subsystem, "eRT.");
-	sprintf(dst_pathname_cr, "%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
+	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
+	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr),"%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 
 	WalPrint("-------- Start of populateComponentValArray -------\n");
 	len = sizeof(objectList)/sizeof(objectList[0]);
 	WalPrint("Length of object list : %d\n",len);
 	for(i = 0; i < len ; i++)
 	{
-		strcpy(paramName,objectList[i]);
+		walStrncpy(paramName,objectList[i],sizeof(paramName));
 		do
 		{
 			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
@@ -1719,8 +1719,8 @@ void WALInit()
 				ComponentValArray[cnt].comp_id = cnt;
 				ComponentValArray[cnt].comp_size = size;
 				getObjectName(paramName,ComponentValArray[cnt].obj_name,1);
-				strcpy(ComponentValArray[cnt].comp_name,ppComponents[0]->componentName);
-				strcpy(ComponentValArray[cnt].dbus_path,ppComponents[0]->dbusPath);
+				walStrncpy(ComponentValArray[cnt].comp_name,ppComponents[0]->componentName,MAX_PARAMETERNAME_LEN/2);
+				walStrncpy(ComponentValArray[cnt].dbus_path,ppComponents[0]->dbusPath,MAX_PARAMETERNAME_LEN/2);
 					   
 				WalInfo("ComponentValArray[%d].comp_id = %d,ComponentValArray[cnt].comp_size = %d, ComponentValArray[%d].obj_name = %s, ComponentValArray[%d].comp_name = %s, ComponentValArray[%d].dbus_path = %s\n", cnt, ComponentValArray[cnt].comp_id,ComponentValArray[cnt].comp_size, cnt, ComponentValArray[cnt].obj_name, cnt, ComponentValArray[cnt].comp_name, cnt, ComponentValArray[cnt].dbus_path);  
 				cnt++;
@@ -1753,7 +1753,7 @@ void WALInit()
 	retryCount = 0;
 	for(i = 0; i < len; i++)
 	{
-		strcpy(paramName,subObjectList[i]);
+		walStrncpy(paramName,subObjectList[i],sizeof(paramName));
 		do
 		{
 			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
@@ -1771,8 +1771,8 @@ void WALInit()
 				SubComponentValArray[cnt1].comp_size = size;
 				getObjectName(paramName,SubComponentValArray[cnt1].obj_name,2);
 				WalPrint("in WALInit() SubComponentValArray[cnt].obj_name is %s",SubComponentValArray[cnt1].obj_name);
-				strcpy(SubComponentValArray[cnt1].comp_name,ppComponents[0]->componentName);
-				strcpy(SubComponentValArray[cnt1].dbus_path,ppComponents[0]->dbusPath);
+				walStrncpy(SubComponentValArray[cnt1].comp_name,ppComponents[0]->componentName,MAX_PARAMETERNAME_LEN/2);
+				walStrncpy(SubComponentValArray[cnt1].dbus_path,ppComponents[0]->dbusPath,MAX_PARAMETERNAME_LEN/2);
 					   
 				WalInfo("SubComponentValArray[%d].comp_id = %d,SubComponentValArray[i].comp_size = %d, SubComponentValArray[%d].obj_name = %s, SubComponentValArray[%d].comp_name = %s, SubComponentValArray[%d].dbus_path = %s\n", cnt1, SubComponentValArray[cnt1].comp_id,SubComponentValArray[cnt1].comp_size, cnt1, SubComponentValArray[cnt1].obj_name, cnt1, SubComponentValArray[cnt1].comp_name, cnt1, SubComponentValArray[cnt1].dbus_path);  
 				cnt1++;
