@@ -55,7 +55,8 @@ static WAL_STATUS WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff,
 static pthread_t server_thread;
 static WebPA_ClientConnector_Dispatcher message_dispatch_callback = NULL;
 
-static in_addr_t get_npcpu_from_config()
+__attribute__((weak))
+in_addr_t get_npcpu_from_config()
 {
   char* begin;
   char* end;
