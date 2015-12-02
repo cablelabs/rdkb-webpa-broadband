@@ -15,6 +15,46 @@
 
 #define MAX_CLIENTS 8
 
+typedef void (*WebPA_ClientConnector_Dispatcher)(int n, char const* buff);
+typedef struct _message_queue
+{
+  char*                  buff;
+  int                    n;
+  struct _message_queue* next;
+} message_queue;
+
+typedef struct
+{
+  char*             topic;
+  int               prog_num;
+  int               prog_vers;
+  char*             proto;
+  char*             host;
+  CLIENT*           clnt;
+  int               keep_alive_interval;
+  pthread_mutex_t   mutex;
+  pthread_cond_t    cond;
+  message_queue*    queue;
+} WebPA_Client;
+
+void webpa_prog_1(struct svc_req *rqstp, register SVCXPRT *transp);
+WAL_STATUS WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, int n);
+int WebPA_ClientConnector_Start();
+int WebPA_ClientConnector_SetDispatchCallback(WebPA_ClientConnector_Dispatcher callback);
+
+WAL_STATUS msgStatus = WAL_FAILURE;
+pthread_mutex_t msgStatusMutex = PTHREAD_MUTEX_INITIALIZER;
+pthread_cond_t msgStatusCond = PTHREAD_COND_INITIALIZER;
+
+static WebPA_Client* clients[MAX_CLIENTS];
+static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
+static int WebPA_Client_IsMatch(WebPA_Client* c, char const* topic);
+static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff, int n);
+static WAL_STATUS WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n);
+
+static pthread_t server_thread;
+static WebPA_ClientConnector_Dispatcher message_dispatch_callback = NULL;
+
 static in_addr_t get_npcpu_from_config()
 {
   char* begin;
@@ -51,45 +91,6 @@ static in_addr_t get_npcpu_from_config()
   fclose(f);
   return inet_addr("192.168.254.253");
 }
-
-typedef void (*WebPA_ClientConnector_Dispatcher)(int n, char const* buff);
-typedef struct _message_queue
-{
-  char*                  buff;
-  int                    n;
-  struct _message_queue* next;
-} message_queue;
-
-void webpa_prog_1(struct svc_req *rqstp, register SVCXPRT *transp);
-
-
-int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, int n);
-int WebPA_ClientConnector_Start();
-int WebPA_ClientConnector_SetDispatchCallback(WebPA_ClientConnector_Dispatcher callback);
-
-typedef struct
-{
-  char*             topic;
-  int               prog_num;
-  int               prog_vers;
-  char*             proto;
-  char*             host;
-  CLIENT*           clnt;
-  int               keep_alive_interval;
-  pthread_mutex_t   mutex;
-  pthread_cond_t    cond;
-  message_queue*    queue;
-} WebPA_Client;
-
-
-static WebPA_Client* clients[MAX_CLIENTS];
-static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
-static int WebPA_Client_IsMatch(WebPA_Client* c, char const* topic);
-static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff, int n);
-static void WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n);
-
-static pthread_t server_thread;
-static WebPA_ClientConnector_Dispatcher message_dispatch_callback = NULL;
 
 int WebPA_ClientConnector_SetDispatchCallback(WebPA_ClientConnector_Dispatcher callback)
 {
@@ -204,9 +205,10 @@ int WebPA_ClientConnector_Start()
 }
 
 
-int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, int n)
+WAL_STATUS WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, int n)
 {
   int i;
+  WAL_STATUS ret = WAL_FAILURE;
 
   pthread_mutex_lock(&mutex);
   
@@ -215,11 +217,11 @@ int WebPA_ClientConnector_DispatchMessage(char const* topic, char const* buff, i
     if (clients[i] && WebPA_Client_IsMatch(clients[i], topic))
     {
       WalInfo("Match found clients[%d]->topic %s \n", i, clients[i]->topic);
-      WebPA_Client_EnqueueMessage(clients[i], buff, n);
+      ret = WebPA_Client_EnqueueMessage(clients[i], buff, n);      
     }
   }
   pthread_mutex_unlock(&mutex);
-  return 0;
+  return ret;
 }
 
 static int WebPA_Client_IsMatch(WebPA_Client* c, char const* topic)
@@ -229,7 +231,7 @@ static int WebPA_Client_IsMatch(WebPA_Client* c, char const* topic)
   return strcmp(c->topic, topic) == 0;
 }
 
-void WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n)
+WAL_STATUS WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n)
 {
   message_queue* p = NULL;
   message_queue* item = NULL;
@@ -237,7 +239,8 @@ void WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n)
   item = (message_queue *) malloc(sizeof(message_queue));
   if(item == NULL)
   {
-    return;
+    WalError("item Malloc failed");
+    return WAL_FAILURE;
   }
   
   item->n = n;
@@ -246,7 +249,7 @@ void WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n)
   {
     WalError("item->buff Malloc failed");
     free(item);
-    return;
+    return WAL_FAILURE;
   }
   item->next = NULL;
   memcpy(item->buff, buff, n);
@@ -266,7 +269,8 @@ void WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n)
   }
   pthread_cond_signal(&c->cond);
   pthread_mutex_unlock(&c->mutex);
-
+  
+  return WAL_SUCCESS;
 }
 
 static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff, int n)
@@ -303,7 +307,7 @@ static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff
     
     pthread_sigmask(SIG_BLOCK, &mask, &old_mask);
     
-    WalInfo("Sending message to client: %s data: '%.*s'\n", c->topic, req.data.data_len, req.data.data_val);
+    WalInfo("Sending message to client: %s\n", c->topic);
     st = clnt_call(c->clnt, WEBPA_SEND_MESSAGE, (xdrproc_t) xdr_webpa_send_message_request,
         (caddr_t) &req, (xdrproc_t) xdr_webpa_send_message_response, (caddr_t) &res, timeout);
     
@@ -464,6 +468,18 @@ static void* WebPA_ServiceClient(void* argp)
           while (q)
           {
             st = WebPA_Client_SendMessage(c, q->buff, q->n);
+            //update message status
+            pthread_mutex_lock(&msgStatusMutex);
+            if(st != RPC_SUCCESS)
+            {
+              msgStatus = WAL_FAILURE;
+            }
+            else
+            {
+              msgStatus = WAL_SUCCESS;
+            }
+            pthread_cond_signal(&msgStatusCond);
+            pthread_mutex_unlock(&msgStatusMutex);
             p = q;
             q = q->next;
         
