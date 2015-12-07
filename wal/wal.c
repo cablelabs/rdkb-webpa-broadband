@@ -1630,7 +1630,7 @@ void _WEBPA_LOG(unsigned int level, const char *msg, ...)
 				perror(pTempChar);
 			}
 			va_end(arg);
-			RDK_LOG(rdkLogLevel, "LOG.RDK.WEBPA", pTempChar);
+			RDK_LOG(rdkLogLevel, "LOG.RDK.WEBPA", "%s", pTempChar);
 			WAL_FREE(pTempChar);
 		}
 	}
