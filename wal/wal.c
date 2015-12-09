@@ -550,19 +550,24 @@ static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* u
 {
 	WalPrint("Inside CcspWebpaValueChangedCB\n");
 
-	ParamNotify *paramNotify = (ParamNotify *) malloc(sizeof(ParamNotify));
+	ParamNotify *paramNotify;
+
+	if (NULL == notifyCbFn) {
+		WalError("Fatal: ccspWebPaValueChangedCB() notifyCbFn is NULL\n");
+		return;
+	}
+
+	paramNotify= (ParamNotify *) malloc(sizeof(ParamNotify));
 	paramNotify->paramName = val->parameterName;
 	paramNotify->oldValue= val->oldValue;
 	paramNotify->newValue = val->newValue;
 	paramNotify->type = val->type;
 	paramNotify->changeSource = mapWriteID(val->writeID);
 
-	WalInfo("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Change Source: %d\n", paramNotify->paramName, paramNotify->oldValue, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
+	WalInfo("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Change Source: %d\n",
+			paramNotify->paramName, paramNotify->oldValue, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
 
-	if(notifyCbFn != NULL)
-	{
-		(*notifyCbFn)(paramNotify);
-	}
+	(*notifyCbFn)(paramNotify);
 }
 
 /**
@@ -575,7 +580,14 @@ void sendIoTNotification(void* iotMsg, int size)
 {
 	char* str = NULL;
 
-	ParamNotify *paramNotify = (ParamNotify *) malloc(sizeof(ParamNotify));
+	ParamNotify *paramNotify;
+
+	if (NULL == notifyCbFn) {
+		WalError("Fatal: sendIoTNotification() notifyCbFn is NULL\n");
+		return;
+	}
+
+	paramNotify = (ParamNotify *) malloc(sizeof(ParamNotify));
 	paramNotify->paramName = (char *) malloc(8);
 	strncpy(paramNotify->paramName, "IOT", 8);
 	paramNotify->oldValue = NULL;
@@ -592,12 +604,10 @@ void sendIoTNotification(void* iotMsg, int size)
 	paramNotify->type = WAL_STRING;
 	paramNotify->changeSource = CHANGED_BY_UNKNOWN;
 
-	WalInfo("Notification Event from IoT: Parameter Name: %s, New Value: %s, Data Type: %d, Change Source: %d\n", paramNotify->paramName, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
+	WalInfo("Notification Event from IoT: Parameter Name: %s, New Value: %s, Data Type: %d, Change Source: %d\n",
+			paramNotify->paramName, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
 
-	if(notifyCbFn != NULL)
-	{
-		(*notifyCbFn)(paramNotify);
-	}
+	(*notifyCbFn)(paramNotify);
 }
 
 static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID)
