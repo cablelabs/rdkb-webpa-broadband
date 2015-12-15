@@ -32,6 +32,7 @@
 #define RDKB_WEBPA_COMPONENT_NAME            "com.cisco.spvtg.ccsp.webpaagent"
 #define RDKB_WEBPA_CFG_FILE                  "/nvram/webpa_cfg.json"
 #define RDKB_WEBPA_CFG_FILE_SRC              "/fss/gw/usr/ccsp/webpa/webpa_cfg.json"
+#define RDKB_WEBPA_CFG_DEVICE_INTERFACE      "erouter0"
 #define RDKB_WEBPA_DEVICE_MAC                "Device.DeviceInfo.X_COMCAST-COM_CM_MAC"
 #define RDKB_XPC_SYNC_PARAM_CID              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CID"
 #define RDKB_XPC_SYNC_PARAM_CMC              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CMC"
@@ -1670,6 +1671,10 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
 			ret = RDKB_WEBPA_CFG_FILE_SRC;
 			break;
 
+		case WCFG_DEVICE_INTERFACE:
+			ret = RDKB_WEBPA_CFG_DEVICE_INTERFACE;
+			break;
+
 		case WCFG_DEVICE_MAC:
 			ret = RDKB_WEBPA_DEVICE_MAC;
 			break;
@@ -1689,7 +1694,7 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
 		default:
 			ret = STR_NOT_DEFINED;
 	}
-	
+
 	return ret;
 }
 
