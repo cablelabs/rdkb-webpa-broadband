@@ -168,9 +168,11 @@ static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size,void* us
 static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID);
 static int getParamValues(char *pParameterName, ParamVal ***parametervalArr,int *TotalParams);
 static int getAtomicParamValues(char *pParameterName[], int paramCount, char *CompName, char *dbusPath, ParamVal ***parametervalArr, int startIndex);
+static int getAtomicParamAttributes(char *parameterNames[], int paramCount, char *CompName, char *dbusPath, AttrVal ***attr, int startIndex);
 static void free_ParamCompList(ParamCompList *ParamGroup, int compCount);
 static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalParams);
 static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType);
+static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal **attArr,int paramCount);
 static int setParamAttributes(const char *pParameterName, const AttrVal *attArr);
 static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *paramVal, char *paramName);
 static void free_set_param_values_memory(parameterValStruct_t* val, int paramCount, char * faultParam);
@@ -183,7 +185,8 @@ static void getObjectName(char *str, char *objectName, int objectLevel);
 static int getComponentInfoFromCache(char *parameterName, char *objectName, char *compName, char *dbusPath);
 static void initApplyWiFiSettings();
 static void *applyWiFiSettingsTask();
-
+static int getComponentDetails(char *parameterName,char *compName,char *dbusPath, int * error);
+static void prepareParamGroups(ParamCompList **ParamGroup,int paramCount,int cnt1,char *paramName,char *compName,char *dbusPath, int * compCount );
 extern void getCurrentTime(struct timeval *timer);
 extern long timeValDiff(struct timeval *starttime, struct timeval *finishtime);
 extern ANSC_HANDLE bus_handle;
@@ -203,6 +206,130 @@ WAL_STATUS RegisterNotifyCB(notifyCB cb)
 	return WAL_SUCCESS;
 }
 
+static int getComponentDetails(char *parameterName,char *compName,char *dbusPath, int * error)
+{
+	char objectName[MAX_PARAMETERNAME_LEN] = {'\0'};
+	int index = -1,retIndex = 0,ret= -1, size = 0;
+	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
+	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
+	componentStruct_t ** ppComponents = NULL;
+	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
+	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr),"%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
+	WalPrint("======= start of getComponentDetails ========\n");
+	index = getComponentInfoFromCache(parameterName, objectName, compName, dbusPath);
+	WalPrint("index : %d\n",index);
+	// Cannot identify the component from cache, make DBUS call to fetch component
+	if(index == -1 || ComponentValArray[index].comp_size > 2) //anything above size > 2
+	{
+		WalPrint("in if for size >2\n");
+		// GET Component for parameter from stack
+		WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
+		retIndex = IndexMpa_WEBPAtoCPE(parameterName);
+		if(retIndex == -1)
+		{
+			ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+			WalError("Parameter name is not supported, invalid index. ret = %d\n", ret);
+			*error = 1;
+			return ret;
+		}
+		WalPrint("Get component for parameterName : %s from stack\n",parameterName);
+
+		ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
+			dst_pathname_cr, parameterName, l_Subsystem, &ppComponents, &size);
+		WalPrint("size : %d, ret : %d\n",size,ret);
+
+		if (ret == CCSP_SUCCESS && size == 1)
+		{
+			strcpy(compName,ppComponents[0]->componentName);
+			strcpy(dbusPath,ppComponents[0]->dbusPath);
+			free_componentStruct_t(bus_handle, size, ppComponents);
+		}
+		else
+		{
+			WalError("Parameter name %s is not supported. ret = %d\n", parameterName, ret);
+			free_componentStruct_t(bus_handle, size, ppComponents);
+			*error = 1;
+			return ret;
+		}
+	}
+	WalPrint("parameterName: %s, compName : %s, dbusPath : %s\n", parameterName, compName, dbusPath);
+	WalPrint("======= End of getComponentDetails ret =%d ========\n",ret);
+	return CCSP_SUCCESS;
+}
+
+static void prepareParamGroups(ParamCompList **ParamGroup,int paramCount,int cnt1,char *paramName,char *compName,char *dbusPath, int * compCount )
+{
+    int cnt2 =0, subParamCount =0,matchFlag = 0, tempCount=0;
+    tempCount =*compCount;
+    ParamCompList *localParamGroup = *ParamGroup;
+    WalPrint("============ start of prepareParamGroups ===========\n");
+    if(*ParamGroup == NULL)
+	{
+		WalPrint("ParamCompList is null initializing\n");
+		localParamGroup = (ParamCompList *) malloc(sizeof(ParamCompList));
+	   	localParamGroup[0].parameterCount = 1;
+	   	localParamGroup[0].comp_name = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
+		walStrncpy(localParamGroup[0].comp_name, compName,MAX_PARAMETERNAME_LEN/2);
+		WalPrint("localParamGroup[0].comp_name : %s\n",localParamGroup[0].comp_name);
+	   	localParamGroup[0].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
+		walStrncpy(localParamGroup[0].dbus_path, dbusPath,MAX_PARAMETERNAME_LEN/2);
+                WalPrint("localParamGroup[0].dbus_path :%s\n",localParamGroup[0].dbus_path);
+		// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)
+		localParamGroup[0].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));
+	   	localParamGroup[0].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
+	   	walStrncpy(localParamGroup[0].parameterName[0],paramName,MAX_PARAMETERNAME_LEN);
+                WalPrint("localParamGroup[0].parameterName[0] : %s\n",localParamGroup[0].parameterName[0]);
+	   	tempCount++;
+	}
+	else
+	{
+	   	WalPrint("ParamCompList exists checking if parameter belongs to existing group\n");		
+		WalPrint("compName %s\n",compName);
+		for(cnt2 = 0; cnt2 < tempCount; cnt2++)
+		{
+		       WalPrint("localParamGroup[cnt2].comp_name %s \n",localParamGroup[cnt2].comp_name);
+			if(!strcmp(localParamGroup[cnt2].comp_name,compName))
+      			{
+				WalPrint("Match found to already existing component group in ParamCompList, adding parameter to it\n");
+				localParamGroup[cnt2].parameterCount = localParamGroup[cnt2].parameterCount + 1;
+				subParamCount =  localParamGroup[cnt2].parameterCount;
+				WalPrint("subParamCount :%d\n",subParamCount);
+
+				localParamGroup[cnt2].parameterName[subParamCount-1] = (char *) malloc(MAX_PARAMETERNAME_LEN);
+
+				walStrncpy(localParamGroup[cnt2].parameterName[subParamCount-1],paramName,MAX_PARAMETERNAME_LEN);
+				WalPrint("localParamGroup[%d].parameterName :%s\n",cnt2,localParamGroup[cnt2].parameterName[subParamCount-1]);
+
+				matchFlag=1;
+				break;
+      			}
+    		}
+	    	if(matchFlag != 1)
+	    	{
+			WalPrint("Parameter does not belong to existing component group, creating new group \n");
+
+		      	localParamGroup =  (ParamCompList *) realloc(localParamGroup,sizeof(ParamCompList) * (tempCount + 1));
+		      	localParamGroup[tempCount].parameterCount = 1;
+		      	localParamGroup[tempCount].comp_name = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
+				walStrncpy(localParamGroup[tempCount].comp_name, compName,MAX_PARAMETERNAME_LEN/2);
+		      	localParamGroup[tempCount].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
+				walStrncpy(localParamGroup[tempCount].dbus_path, dbusPath,MAX_PARAMETERNAME_LEN/2);
+
+			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)
+		      	localParamGroup[tempCount].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));
+			localParamGroup[tempCount].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
+		      	walStrncpy(localParamGroup[tempCount].parameterName[0],paramName,MAX_PARAMETERNAME_LEN);
+
+		       	WalPrint("localParamGroup[%d].comp_name :%s\n",tempCount,localParamGroup[tempCount].comp_name);
+		      	WalPrint("localParamGroup[%d].parameterName :%s\n",tempCount,localParamGroup[tempCount].parameterName[0]);
+			tempCount++;
+	    	}
+ 	}
+ 	*compCount = tempCount;
+ 	*ParamGroup = localParamGroup; 
+    WalPrint("============ End of prepareParamGroups compCount =%d===========\n",*compCount);
+ 	
+ }
 /**
  * @brief getValues Returns the parameter Names from stack for GET request
  *
@@ -215,124 +342,25 @@ WAL_STATUS RegisterNotifyCB(notifyCB cb)
 void getValues(const char *paramName[], const unsigned int paramCount, ParamVal ***paramValArr,
 		int *retValCount, WAL_STATUS *retStatus)
 {
-	int cnt1=0, cnt2=0, compCount=0, matchFlag=0, subParamCount=0, ret = -1, startIndex = 0,size = 0, error = 0, retIndex=0, index = -1;
+	int cnt1=0,cnt2=0, ret = -1, startIndex = 0,size = 0, error = 0, retIndex=0, compCount=0;
 	char parameterName[MAX_PARAMETERNAME_LEN] = {'\0'};
-	char objectName[MAX_PARAMETERNAME_LEN] = {'\0'};
 	ParamCompList *ParamGroup = NULL;
-	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
-	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
 	char compName[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
-	componentStruct_t ** ppComponents = NULL;	
-	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
-	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr),"%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
 	
 	for(cnt1 = 0; cnt1 < paramCount; cnt1++)
 	{
-		matchFlag = 0;
-
 		// Get the matching component index from cache
 		walStrncpy(parameterName,paramName[cnt1],sizeof(parameterName));
-		index = getComponentInfoFromCache(parameterName, objectName, compName, dbusPath);         	
-		
-		// Cannot identify the component from cache, make DBUS call to fetch component
-		if(index == -1 || ComponentValArray[index].comp_size > 2) //anything above size > 2
+		ret = getComponentDetails(parameterName,compName,dbusPath,&error);
+		if(error == 1)
 		{
-			WalPrint("in if for size >2\n");
-			// GET Component for parameter from stack
-			WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
-			walStrncpy(parameterName,paramName[cnt1],sizeof(parameterName));
-			retIndex = IndexMpa_WEBPAtoCPE(parameterName);
-			if(retIndex == -1)
-			{
-				ret = CCSP_ERR_INVALID_PARAMETER_NAME;
-				WalError("Parameter name is not supported, invalid index. ret = %d\n", ret);
-				error = 1;
-				break;
-			}
-			WalPrint("Get component for parameterName : %s from stack\n",parameterName);
-
-			ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
-		        dst_pathname_cr, parameterName, l_Subsystem, &ppComponents, &size);
-			WalPrint("size : %d, ret : %d\n",size,ret);
-			
-			if (ret == CCSP_SUCCESS && size == 1)
-			{	
-				walStrncpy(compName,ppComponents[0]->componentName,sizeof(compName));
-				walStrncpy(dbusPath,ppComponents[0]->dbusPath,sizeof(dbusPath));
-				free_componentStruct_t(bus_handle, size, ppComponents);
-			}
-			else
-			{
-				WalError("Parameter name %s is not supported. ret = %d\n", parameterName, ret);
-				free_componentStruct_t(bus_handle, size, ppComponents);
-				error = 1;
-				break;
-			}
+			break;
 		}
 	
 		WalPrint("parameterName: %s, compName : %s, dbusPath : %s\n", parameterName, compName, dbusPath);
-		if(ParamGroup == NULL)
-		{
-			WalPrint("ParamCompList is null initializing\n");				
-			ParamGroup = (ParamCompList *) malloc(sizeof(ParamCompList));
-		   	ParamGroup[0].parameterCount = 1;
-		   	ParamGroup[0].comp_name = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
-			walStrncpy(ParamGroup[0].comp_name, compName,MAX_PARAMETERNAME_LEN/2);
-		   	ParamGroup[0].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
-			walStrncpy(ParamGroup[0].dbus_path, dbusPath,MAX_PARAMETERNAME_LEN/2);
-
-			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)
-			ParamGroup[0].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));			   
-		   	ParamGroup[0].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
-		   	walStrncpy(ParamGroup[0].parameterName[0],paramName[cnt1],MAX_PARAMETERNAME_LEN);
-
-		   	compCount++;
-		}
-		else
-		{
-		   	WalPrint("ParamCompList exists checking if parameter belongs to existing group\n");
-
-			for(cnt2 = 0; cnt2 < compCount; cnt2++)
-			{
-				if(!strcmp(ParamGroup[cnt2].comp_name,compName))
-	      		{
-					WalPrint("Match found to already existing component group in ParamCompList, adding parameter to it\n");
-					ParamGroup[cnt2].parameterCount = ParamGroup[cnt2].parameterCount + 1;
-					subParamCount =  ParamGroup[cnt2].parameterCount;
-					WalPrint("subParamCount :%d\n",subParamCount);
-				
-					ParamGroup[cnt2].parameterName[subParamCount-1] = (char *) malloc(MAX_PARAMETERNAME_LEN);
-						
-					walStrncpy(ParamGroup[cnt2].parameterName[subParamCount-1],paramName[cnt1],MAX_PARAMETERNAME_LEN);
-					WalPrint("ParamGroup[%d].parameterName :%s\n",cnt2,ParamGroup[cnt2].parameterName[subParamCount-1]);
-						
-					matchFlag=1;
-					break;
-	      		}
-	    	}
-	    	if(matchFlag != 1)
-	    	{
-			WalPrint("Parameter does not belong to existing component group, creating new group \n");
-				    
-		      	ParamGroup =  (ParamCompList *) realloc(ParamGroup,sizeof(ParamCompList) * (compCount + 1));
-		      	ParamGroup[compCount].parameterCount = 1;
-		      	ParamGroup[compCount].comp_name = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
-				walStrncpy(ParamGroup[compCount].comp_name, compName,MAX_PARAMETERNAME_LEN/2);
-		      	ParamGroup[compCount].dbus_path = (char *) malloc(MAX_PARAMETERNAME_LEN/2);
-				walStrncpy(ParamGroup[compCount].dbus_path, dbusPath,MAX_PARAMETERNAME_LEN/2);
-
-			// max number of parameter will be equal to the remaining parameters to be iterated (i.e. paramCount - cnt1)	  
-		      	ParamGroup[compCount].parameterName = (char **) malloc(sizeof(char *) * (paramCount - cnt1));
-		        ParamGroup[compCount].parameterName[0] = (char *) malloc(MAX_PARAMETERNAME_LEN);
-		      	walStrncpy(ParamGroup[compCount].parameterName[0],paramName[cnt1],MAX_PARAMETERNAME_LEN);
-				      
-		       	WalPrint("ParamGroup[%d]->comp_name :%s\n",compCount,ParamGroup[compCount].comp_name);
-		      	WalPrint("ParamGroup[%d].parameterName :%s\n",compCount,ParamGroup[compCount].parameterName[0]);
-				      
-		      	compCount++;			     
-	    	}		    
-	 	}
+	  	prepareParamGroups(&ParamGroup,paramCount,cnt1,parameterName,compName,dbusPath,&compCount);
+	 
 	}//End of for loop
 	   
 	WalPrint("Number of parameter groups : %d\n",compCount);
@@ -342,7 +370,7 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		for(cnt1 = 0; cnt1 < compCount; cnt1++)
 		{
 			WalInfo("********** Parameter group ****************\n");
-		  	WalInfo("ParamGroup[%d]->comp_name :%s, ParamGroup[%d]->dbus_path :%s, ParamGroup[%d]->parameterCount :%d\n",cnt1,ParamGroup[cnt1].comp_name, cnt1,ParamGroup[cnt1].dbus_path, cnt1,ParamGroup[cnt1].parameterCount);
+		  	WalInfo("ParamGroup[%d].comp_name :%s, ParamGroup[%d].dbus_path :%s, ParamGroup[%d].parameterCount :%d\n",cnt1,ParamGroup[cnt1].comp_name, cnt1,ParamGroup[cnt1].dbus_path, cnt1,ParamGroup[cnt1].parameterCount);
 		  	
 		  	for(cnt2 = 0; cnt2 < ParamGroup[cnt1].parameterCount; cnt2++)
 		  	{
@@ -442,15 +470,69 @@ static int getComponentInfoFromCache(char *parameterName, char *objectName, char
  */
 void getAttributes(const char *paramName[], const unsigned int paramCount, AttrVal ***attr, int *retAttrCount, WAL_STATUS *retStatus)
 {
-	int cnt = 0;
-	int ret = 0;
-
-	for (cnt = 0; cnt < paramCount; cnt++)
+	int cnt1=0,cnt2=0, ret = -1, startIndex = 0,size = 0, error = 0, retIndex=0, compCount=0;
+	char parameterName[MAX_PARAMETERNAME_LEN] = {'\0'};
+	ParamCompList *ParamGroup = NULL;
+	char compName[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	for(cnt1 = 0; cnt1 < paramCount; cnt1++)
 	{
-		ret = getParamAttributes(paramName[cnt], &attr[cnt], &retAttrCount[cnt]);
-		retStatus[cnt] = mapStatus(ret);
-		WalPrint("Parameter Name: %s, Parameter Attributes return: %d\n",paramName[cnt],retStatus[cnt]);
+		// Get the matching component index from cache
+		walStrncpy(parameterName,paramName[cnt1],sizeof(parameterName));
+		ret = getComponentDetails(parameterName,compName,dbusPath,&error);
+		if(error == 1)
+		{
+			break;
+		}
+		WalPrint("parameterName: %s, compName : %s, dbusPath : %s\n", parameterName, compName, dbusPath);
+	  	prepareParamGroups(&ParamGroup,paramCount,cnt1,parameterName,compName,dbusPath,&compCount);
+	 
+	}//End of for loop
+	   
+	WalPrint("Number of parameter groups : %d\n",compCount);
+	if(error != 1)
+	{
+		for(cnt1 = 0; cnt1 < compCount; cnt1++)
+		{
+			WalInfo("********** Parameter group ****************\n");
+		  	WalInfo("ParamGroup[%d].comp_name :%s, ParamGroup[%d].dbus_path :%s, ParamGroup[%d].parameterCount :%d\n",cnt1,ParamGroup[cnt1].comp_name, cnt1,ParamGroup[cnt1].dbus_path, cnt1,ParamGroup[cnt1].parameterCount);
+		  	
+		  	for(cnt2 = 0; cnt2 < ParamGroup[cnt1].parameterCount; cnt2++)
+		  	{
+			 		WalInfo("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
+		  	}
+			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
+			{
+				WalPrint("Before mutex lock in getValues\n");
+				pthread_mutex_lock (&applySetting_mutex);
+				WalPrint("After mutex lock in getValues\n");
+			}
+		  	// GET atomic value call
+			WalPrint("startIndex %d\n",startIndex);
+		  	ret = getAtomicParamAttributes(ParamGroup[cnt1].parameterName, ParamGroup[cnt1].parameterCount, ParamGroup[cnt1].comp_name, ParamGroup[cnt1].dbus_path, attr, startIndex);
+			
+			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
+			{
+				pthread_mutex_unlock (&applySetting_mutex);
+				WalPrint("After thread unlock in getValues\n");
+			}
+		  	if(ret != CCSP_SUCCESS)
+		  	{
+				WalError("Get Atomic Values call failed for ParamGroup[%d]->comp_name :%s ret: %d\n",cnt1,ParamGroup[cnt1].comp_name,ret);
+				break;
+		  	}
+		
+			startIndex = startIndex + ParamGroup[cnt1].parameterCount;
+		}
 	}
+	
+	for (cnt1 = 0; cnt1 < paramCount; cnt1++)
+	{
+		retStatus[cnt1] = mapStatus(ret);
+		retAttrCount[cnt1] = 1;	
+	}
+	
+	free_ParamCompList(ParamGroup, compCount);
 }
 
 /**
@@ -485,10 +567,9 @@ void setAttributes(const char *paramName[], const unsigned int paramCount,
 		const AttrVal *attArr[], WAL_STATUS *retStatus)
 {
 	int cnt = 0, ret = 0;
-
+	ret = setAtomicParamAttributes(paramName, attArr,paramCount);
 	for (cnt = 0; cnt < paramCount; cnt++)
 	{
-		ret = setParamAttributes(paramName[cnt], attArr[cnt]);
 		retStatus[cnt] = mapStatus(ret);
 	}
 
@@ -890,6 +971,86 @@ static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalP
 	}
 	return ret;
 }
+
+static int getAtomicParamAttributes(char *parameterNames[], int paramCount, char *CompName, char *dbusPath, AttrVal ***attr, int startIndex)
+{
+	int ret = 0, sizeAttrArr = 0, cnt=0, retIndex=0, error=0;
+	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
+	char **parameterNamesLocal = NULL;
+	parameterAttributeStruct_t** ppAttrArray = NULL;
+
+	WalPrint(" ------ Start of getAtomicParamAttributes ----\n");
+	parameterNamesLocal = (char **) malloc(sizeof(char *) * paramCount);
+	memset(parameterNamesLocal,0,(sizeof(char *) * paramCount));
+
+	// Initialize names array with converted index	
+	for (cnt = 0; cnt < paramCount; cnt++)
+	{
+		WalPrint("Before parameterNames[%d] : %s\n",cnt,parameterNames[cnt]);
+	
+		parameterNamesLocal[cnt] = (char *) malloc(sizeof(char) * (strlen(parameterNames[cnt]) + 1));
+		strcpy(parameterNamesLocal[cnt],parameterNames[cnt]);
+
+		retIndex=IndexMpa_WEBPAtoCPE(parameterNamesLocal[cnt]);
+		if(retIndex == -1)
+		{
+		 	ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+		 	WalError("Parameter name is not supported, invalid index. ret = %d\n", ret);
+			error = 1;
+			break;
+		}
+
+		WalPrint("After parameterNamesLocal[%d] : %s\n",cnt,parameterNamesLocal[cnt]);
+	}
+	
+	if(error != 1)
+	{
+		WalPrint("CompName = %s, dbusPath : %s, paramCount = %d\n", CompName, dbusPath, paramCount);
+	 
+		ret = CcspBaseIf_getParameterAttributes(bus_handle,CompName,dbusPath,parameterNamesLocal,paramCount, &sizeAttrArr, &ppAttrArray);
+		WalPrint("----- After GPA ret = %d------\n",ret);
+		if (ret != CCSP_SUCCESS)
+		{
+			WalError("Error:Failed to GetValue for parameters ret: %d\n", ret);
+		}
+		else
+		{
+			WalPrint("sizeAttrArr : %d\n",sizeAttrArr);
+			if(startIndex == 0)
+			{
+				attr[0] = (AttrVal **) malloc(sizeof(AttrVal *) * sizeAttrArr);
+			}
+			else
+			{
+				attr[0] = (AttrVal **) realloc(attr[0],sizeof(AttrVal*) * (startIndex + sizeAttrArr));
+			}
+			for (cnt = 0; cnt < sizeAttrArr; cnt++)
+			{
+				WalPrint("cnt+startIndex : %d\n",cnt+startIndex);				
+				attr[0][cnt+startIndex] = (AttrVal *) malloc(sizeof(AttrVal) * 1);
+				attr[0][cnt+startIndex]->name = (char *) malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
+				attr[0][cnt+startIndex]->value = (char *) malloc(sizeof(char) * MAX_PARAMETERVALUE_LEN);
+
+				IndexMpa_CPEtoWEBPA(&ppAttrArray[cnt]->parameterName);
+				WalPrint("ppAttrArray[cnt]->parameterName : %s\n",ppAttrArray[cnt]->parameterName);
+				walStrncpy(attr[0][cnt+startIndex]->name, ppAttrArray[cnt]->parameterName,MAX_PARAMETERNAME_LEN);
+				sprintf(attr[0][cnt+startIndex]->value, "%d", ppAttrArray[cnt]->notification);
+				attr[0][cnt+startIndex]->type = WAL_INT;
+				WalPrint("success: %s %s %d \n",attr[0][cnt+startIndex]->name,attr[0][cnt+startIndex]->value,attr[0][cnt+startIndex]->type);
+			}
+
+			free_parameterAttributeStruct_t(bus_handle, sizeAttrArr, ppAttrArray);
+		}	
+	}
+		
+	for (cnt = 0; cnt < paramCount; cnt++)
+	{
+		WAL_FREE(parameterNamesLocal[cnt]);
+	}
+	WAL_FREE(parameterNamesLocal);
+	return ret;
+}
+
 
 /**
  * @brief setParamValues Returns the status from stack for SET request
@@ -1375,6 +1536,99 @@ static int setParamAttributes(const char *pParameterName, const AttrVal *attArr)
 	return ret;
 }
 
+static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal **attArr,int paramCount)
+{
+	int ret = 0, cnt = 0, size = 0, notificationType = 0, error = 0,retIndex = 0;
+	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
+	char compName[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	char tempCompName[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	
+	parameterAttributeStruct_t *attriStruct =(parameterAttributeStruct_t*) malloc(sizeof(parameterAttributeStruct_t) * paramCount);
+	memset(attriStruct,0,(sizeof(parameterAttributeStruct_t) * paramCount));
+	WalPrint("==========setAtomicParamAttributes ========\n ");
+	
+	walStrncpy(paramName,pParameterName[0],sizeof(paramName));
+	ret = getComponentDetails(paramName,compName,dbusPath,&error);
+	if(error == 1)
+	{
+		WalError("Component name is not supported ret : %d\n", ret);
+		WAL_FREE(attriStruct);
+		return ret;
+	}
+	WalInfo("parameterName: %s, CompName : %s, dbusPath : %s\n", paramName, compName, dbusPath);
+	
+	for (cnt = 0; cnt < paramCount; cnt++) 
+	{
+		retIndex = 0;
+		walStrncpy(paramName,pParameterName[cnt],sizeof(paramName));
+				
+		ret = getComponentDetails(paramName,tempCompName,dbusPath,&error);
+		if(error == 1)
+		{
+			WalError("Component name is not supported ret : %d\n", ret);
+			WAL_FREE(attriStruct);
+			return ret;
+		}			
+		WalInfo("parameterName: %s, tempCompName : %s\n", paramName, tempCompName);
+		
+		if (strcmp(compName, tempCompName) != 0)
+		{
+			WalError("Error: Parameters does not belong to the same component\n");
+			WAL_FREE(attriStruct);
+			return CCSP_FAILURE;
+		}		
+		retIndex = IndexMpa_WEBPAtoCPE(paramName);
+		if(retIndex == -1)
+		{
+			ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+			WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
+			WAL_FREE(attriStruct);	
+			return ret;
+		}
+
+		attriStruct[cnt].parameterName = NULL;
+		attriStruct[cnt].notificationChanged = 1;
+		attriStruct[cnt].accessControlChanged = 0;	
+		notificationType = atoi(attArr[cnt]->value);
+		WalPrint("notificationType : %d\n",notificationType);
+		if(notificationType == 1)
+		{
+			ret = CcspBaseIf_Register_Event(bus_handle, compName, "parameterValueChangeSignal");
+
+			if (CCSP_SUCCESS != ret)
+			{
+				WalError("WebPa: CcspBaseIf_Register_Event failed!!!\n");
+			}
+
+			CcspBaseIf_SetCallback2(bus_handle, "parameterValueChangeSignal", ccspWebPaValueChangedCB, NULL);
+		}
+		attriStruct[cnt].parameterName = malloc( sizeof(char) * MAX_PARAMETERNAME_LEN);
+		walStrncpy(attriStruct[cnt].parameterName,paramName,MAX_PARAMETERNAME_LEN);
+		WalPrint("attriStruct[%d].parameterName : %s\n",cnt,attriStruct[cnt].parameterName);
+		
+		attriStruct[cnt].notification = notificationType;
+		WalPrint("attriStruct[%d].notification : %d\n",cnt,attriStruct[cnt].notification );	
+	}
+	
+	if(error != 1)
+	{
+		ret = CcspBaseIf_setParameterAttributes(bus_handle,compName, dbusPath, 0,
+			attriStruct, paramCount);
+		WalPrint("=== After SPA == ret = %d\n",ret);
+		if (CCSP_SUCCESS != ret)
+		{
+			WalError("Failed to set attributes for SetParamAttr ret : %d \n", ret);
+		}
+		for (cnt = 0; cnt < paramCount; cnt++) 
+		{
+			WAL_FREE(attriStruct[cnt].parameterName);
+		}
+	}
+	
+	WAL_FREE(attriStruct);
+	return ret;
+}
 /**
  * @brief IndexMpa_WEBPAtoCPE maps to CPE index
  * @param[in] pParameterName parameter name
