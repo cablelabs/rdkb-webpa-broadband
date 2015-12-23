@@ -85,6 +85,7 @@ in_addr_t get_npcpu_from_config()
 
       if (end) *end = '\0';
 
+      fclose(f);
       return inet_addr(begin);
     }
   }
