@@ -163,6 +163,8 @@ static char *subObjectList[] =
 /*----------------------------------------------------------------------------*/
 /*                             Function Prototypes                            */
 /*----------------------------------------------------------------------------*/
+static void ccspSystemReadySignalCB(void* user_data);
+static void waitUntilSystemReady();
 static WAL_STATUS mapStatus(int ret);
 static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size,void* user_data);
 static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID);
@@ -1957,6 +1959,9 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
  */
 void WALInit()
 {
+	// Wait till all the functional components are ready on the stack. Wait for systemReadySignal before proceeding
+	waitUntilSystemReady();
+	
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
 	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
 	int ret = 0, i = 0, size = 0, len = 0, cnt = 0, cnt1 = 0, retryCount = 0;
@@ -2078,4 +2083,50 @@ void WALInit()
 	// Initialize Apply WiFi Settings handler
 	initApplyWiFiSettings();
 }
+
+/**
+ * @brief ccspSystemReadySignalCB Call back function to be executed once we receive system ready signal from CR.
+ * This is to make sure that Web PA will SET attributes only when system is completely UP 
+ */
+static void ccspSystemReadySignalCB(void* user_data)
+{
+	// Touch a file to indicate that Web PA can proceed with 
+	// SET/GET any parameter. 
+	system("touch /var/tmp/webpaready");
+	WalInfo("Received system ready signal, created /var/tmp/webpaready file\n");
+}
+
+/**
+ * @brief waitUntilSystemReady Function to wait until the system ready signal from CR is received.
+ * This is to delay WebPA start up until other components on stack are ready.
+ */
+static void waitUntilSystemReady()
+{
+	CcspBaseIf_Register_Event(bus_handle, NULL, "systemReadySignal");
+
+        CcspBaseIf_SetCallback2
+	(
+		bus_handle,
+		"systemReadySignal",
+		ccspSystemReadySignalCB,
+		NULL
+	);
+
+	FILE *file;
+          
+	// Wait till Call back touches the indicator to proceed further
+	while((file = fopen("/var/tmp/webpaready", "r")) == NULL)
+	{
+		WalInfo("Waiting for system ready signal\n");
+		sleep(5);
+	};
+	// In case of Web PA restart, we should be having webpaready already touched.
+	// In normal boot up we will reach here only when system ready is received.
+	if(file != NULL)
+	{
+		WalInfo("/var/tmp/webpaready file exists, hence can proceed with webpa start up\n");
+		fclose(file);
+	}	
+}
+
 
