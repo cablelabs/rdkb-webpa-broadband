@@ -11,6 +11,7 @@
 #include <rpc/pmap_clnt.h>
 #include <time.h>
 #include <unistd.h>
+#include <arpa/inet.h>
 #include "wal.h"
 
 #define MAX_CLIENTS 8
@@ -35,6 +36,8 @@ typedef struct
   pthread_mutex_t   mutex;
   pthread_cond_t    cond;
   message_queue*    queue;
+  int               is_dead;
+  pthread_t         worker_thread;
 } WebPA_Client;
 
 void webpa_prog_1(struct svc_req *rqstp, register SVCXPRT *transp);
@@ -58,8 +61,6 @@ static WebPA_ClientConnector_Dispatcher message_dispatch_callback = NULL;
 __attribute__((weak))
 in_addr_t get_npcpu_from_config()
 {
-  char* begin;
-  char* end;
   char  buff[1024];
 
   FILE* f = fopen("/etc/config", "r");
@@ -181,7 +182,7 @@ static void* WebPA_Server_Run(void* argp)
   if (ret == 0)
   {
     int err = errno;
-    WalError("unable to register rpc program (prog=%d, vers=%d, proto=tcp)", WEBPA_PROG, WEBPA_VERS);
+    WalError("unable to register rpc program (prog=%d, vers=%d, proto=tcp)\n", WEBPA_PROG, WEBPA_VERS);
     pthread_exit(&err);
   }
     
@@ -336,9 +337,10 @@ static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff
 
 static void WebPA_Client_Destroy(WebPA_Client* c)
 {
-  WalInfo("WebPA_Client_Destroy\n");
+  WalInfo("destroying client: %p\n", c);
   
-  if (c == NULL){
+  if (c == NULL)
+  {
     WalError("Client destroy client is NULL\n");
     return;
   } 
@@ -385,6 +387,8 @@ static WebPA_Client* WebPA_Client_Create(webpa_register_request* req)
     pthread_cond_init(&c->cond, NULL);
 
     c->queue = NULL;
+    c->is_dead = 0;
+    c->worker_thread = (pthread_t) 0;
   }
   else
   {
@@ -402,7 +406,6 @@ static void* WebPA_ServiceClient(void* argp)
   enum clnt_stat      st;
   struct timespec     ts;
   struct timespec     now;
-  struct timeval      timeout;
   message_queue*      p;
   message_queue*      q;
 
@@ -412,7 +415,6 @@ static void* WebPA_ServiceClient(void* argp)
   st = 0;
   memset(&ts, 0, sizeof(struct timespec));
   memset(&now, 0, sizeof(struct timespec));
-  memset(&timeout, 0, sizeof(struct timeval));
   p = NULL;
   q = NULL;
 
@@ -428,83 +430,84 @@ static void* WebPA_ServiceClient(void* argp)
   // to the client, and to invoke the NULLPROC (ping) to make sure it's still
   // connected
   c = (WebPA_Client *) argp;
-  
+  c->clnt = clnt_create(c->host, c->prog_num, c->prog_vers, c->proto);
+  if (!c->clnt)
+  {
+    char const* err = clnt_spcreateerror(c->host);
+    WalError("failed to create client to (prog:%d vers:%d proto:%s): %s\n",
+      c->prog_num, c->prog_vers, c->proto, err);
+  }
 
-  timeout.tv_sec = 2;
-  timeout.tv_usec = 0;
-
-  while (1)
+  while (c->clnt != NULL)
   {
     st = RPC_FAILED;
     pthread_mutex_lock(&c->mutex);
     
-    if (c->clnt == NULL)
-      c->clnt = clnt_create(c->host, c->prog_num, c->prog_vers, c->proto);
+    clock_gettime(CLOCK_REALTIME, &now);
+    ts.tv_sec = now.tv_sec + 1;
 
-    if (c->clnt == NULL)
+    n = pthread_cond_timedwait(&c->cond, &c->mutex, &ts);
+    if (c->is_dead)
     {
-      char const* s = clnt_spcreateerror(c->host);
-      WalError("clnt_create failed: %s\n", s);
+      WalInfo("got shutdown signal for %p\n", c);
       pthread_mutex_unlock(&c->mutex);
-      break;
+      goto client_shutdown;
+    }
+
+    if (n == ETIMEDOUT)
+    {
+      struct timeval timeout;
+      timeout.tv_sec = 2;
+      timeout.tv_usec = 0;
+
+      st = clnt_call(c->clnt, NULLPROC, (xdrproc_t) xdr_void, (caddr_t) NULL,
+          (xdrproc_t) xdr_void, (caddr_t) NULL, timeout);
     }
     else
     {
-      clock_gettime(CLOCK_REALTIME, &now);
-      ts.tv_sec = now.tv_sec + 2;
-
-      n = pthread_cond_timedwait(&c->cond, &c->mutex, &ts);
-      if (n == ETIMEDOUT)
+      if (c->queue)
       {
-          WalInfo("ETIMEDOUT \n");
-          st = clnt_call(c->clnt, NULLPROC, (xdrproc_t) xdr_void, (caddr_t) NULL,
-                  (xdrproc_t) xdr_void, (caddr_t) NULL, timeout);
-         
-      }
-      else
-      {
-        if (c->queue)
+        p = NULL;
+        q = c->queue;
+        while (q)
         {
-          p = NULL;
-          q = c->queue;
-          while (q)
+          st = WebPA_Client_SendMessage(c, q->buff, q->n);
+          //update message status
+          pthread_mutex_lock(&msgStatusMutex);
+          if(st != RPC_SUCCESS)
           {
-            st = WebPA_Client_SendMessage(c, q->buff, q->n);
-            //update message status
-            pthread_mutex_lock(&msgStatusMutex);
-            if(st != RPC_SUCCESS)
-            {
-              msgStatus = WAL_FAILURE;
-            }
-            else
-            {
-              msgStatus = WAL_SUCCESS;
-            }
-            pthread_cond_signal(&msgStatusCond);
-            pthread_mutex_unlock(&msgStatusMutex);
-            p = q;
-            q = q->next;
-        
-            free(p->buff);
-            free(p);
+            msgStatus = WAL_FAILURE;
           }
-          c->queue = NULL;
+          else
+          {
+            msgStatus = WAL_SUCCESS;
+          }
+          pthread_cond_signal(&msgStatusCond);
+          pthread_mutex_unlock(&msgStatusMutex);
+          p = q;
+          q = q->next;
+
+          free(p->buff);
+          free(p);
         }
+        c->queue = NULL;
       }
+    }
 
-      if (st != RPC_SUCCESS)
-      {
-        WebPA_Server_ClearPendingSignal(SIGPIPE);
+    if (st != RPC_SUCCESS)
+    {
+      WebPA_Server_ClearPendingSignal(SIGPIPE);
 
-        char const* s = clnt_sperrno(st);
-        WalError("clnt_call failed: %s\n", s);
-        pthread_mutex_unlock(&c->mutex);
-        break;
-      }
+      char const* s = clnt_sperrno(st);
+      WalError("clnt_call failed: %s\n", s);
+      pthread_mutex_unlock(&c->mutex);
+      break;
     }
     pthread_mutex_unlock(&c->mutex);
   }
 
+client_shutdown:
+  WalInfo("cleaning up after client: %p\n", c);
   pthread_mutex_lock(&mutex);
   for (i = 0; i < MAX_CLIENTS; ++i)
   {
@@ -545,12 +548,22 @@ bool_t
 webpa_register_1_svc(webpa_register_request req, webpa_register_response* res, struct svc_req* svc)
 {
   int             i;
+  int             n;
   int             index;
   pthread_t       thr;
-  WebPA_Client*   client = NULL;
+  pthread_t*      dead_clients;
+  WebPA_Client*   client;
  
   (void) svc;
 
+  client = NULL;
+  i = 0;
+  n = 0;
+  index = 0;
+  thr = (pthread_t) 0;
+  dead_clients = (pthread_t *) malloc(sizeof(pthread_t) * MAX_CLIENTS);
+
+  /* always hold the clients[] list mutex when enumerating */
   pthread_mutex_lock(&mutex);
 
   // first check to see if client is already registered
@@ -562,13 +575,40 @@ webpa_register_1_svc(webpa_register_request req, webpa_register_response* res, s
           (clients[i]->prog_vers == req.prog_vers) &&
           (strcmp(clients[i]->proto, req.proto) == 0))
       {
-        // TODO: already registered???
-        WalInfo("Client already registered\n");
-        //signal all pending threads on this client and destroy it
+        WalInfo("client (prog:%d vers:%d proto:%s already registered, clearing",
+          req.prog_num, req.prog_vers, req.proto);
+
+        /* signal to client service thread that the client is being re-used */
+        pthread_mutex_lock(&clients[i]->mutex);
+        clients[i]->is_dead = 1;
+        dead_clients[n++] = clients[i]->worker_thread;
+        pthread_cond_signal(&clients[i]->cond);
+        pthread_mutex_unlock(&clients[i]->mutex);
+
+        WalInfo("client cleared, continuing with new registration\n");
       }
     }
   }
 
+  /* release clients[] list mutex to allow for any pending client service
+   * threads to exit. those thread will need to acquire this mutex in
+   * order to remove themselves from that list
+   */
+  pthread_mutex_unlock(&mutex);
+
+  /* wait for any threads that are still servicing dead clients to exit */
+  for (i = 0; i < n; ++i)
+  {
+    int ret;
+    WalInfo("waiting for thread: %ld to exit\n", dead_clients[i]);
+    ret = pthread_join(dead_clients[i], NULL);
+    WalInfo("joined thread: %ld\n", ret);
+  }
+
+  free(dead_clients);
+
+  /* mutex must be held while enumerating the clients[] list */
+  pthread_mutex_lock(&mutex);
   for (i = 0, index = -1; index == -1 && i < MAX_CLIENTS; ++i)
   {
     if (!clients[i])
@@ -576,27 +616,33 @@ webpa_register_1_svc(webpa_register_request req, webpa_register_response* res, s
   }
 
   if (index != -1)
+  {
     client = WebPA_Client_Create(&req);
-  
-  if(client)
-    WalInfo("client created with topic: %s\n",client->topic);
-      
-  clients[index] = client;
+    if (client)
+    {
+      clients[index] = client;
+      WalInfo("client (prog:%d vers:%d proto:%s already registered in slot: %d with topic: %s\n",
+          req.prog_num, req.prog_vers, req.proto, index, client->topic);
+    }
+  }
 
   if (index == -1)
   {
+    WalError("failed to find index for new client");
     pthread_mutex_unlock(&mutex);
     return FALSE;   
   }
-    
 
   if (!client)
   {
+    WalError("failed to create client. NULL\n");
     pthread_mutex_unlock(&mutex);
     return FALSE;
   }
 
+  WalInfo("creating thread for new client\n");
   pthread_create(&thr, NULL, WebPA_ServiceClient, client);
+  client->worker_thread = thr;
   pthread_mutex_unlock(&mutex);
  
   res->id = index;
