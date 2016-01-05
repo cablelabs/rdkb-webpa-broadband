@@ -54,6 +54,7 @@ static pthread_mutex_t mutex = PTHREAD_MUTEX_INITIALIZER;
 static int WebPA_Client_IsMatch(WebPA_Client* c, char const* topic);
 static enum clnt_stat WebPA_Client_SendMessage(WebPA_Client* c, char const* buff, int n);
 static WAL_STATUS WebPA_Client_EnqueueMessage(WebPA_Client* c, char const* buff, int n);
+static void InitClientList();
 
 static pthread_t server_thread;
 static WebPA_ClientConnector_Dispatcher message_dispatch_callback = NULL;
@@ -193,6 +194,8 @@ static void* WebPA_Server_Run(void* argp)
 int WebPA_ClientConnector_Start()
 {
   int err = 0;
+  //initialize client list
+  InitClientList();
 
   err = pthread_create(&server_thread, NULL, WebPA_Server_Run, NULL);
   if (err != 0) 
@@ -523,8 +526,10 @@ client_shutdown:
 static void InitClientList()
 {
   int i;
+  pthread_mutex_lock(&mutex);
   for (i = 0; i < MAX_CLIENTS; ++i)
     clients[i] = NULL;
+  pthread_mutex_unlock(&mutex);
 }
 
 // client asked webpa server to send message
