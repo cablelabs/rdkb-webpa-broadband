@@ -165,6 +165,7 @@ static char *subObjectList[] =
 /*----------------------------------------------------------------------------*/
 static void ccspSystemReadySignalCB(void* user_data);
 static void waitUntilSystemReady();
+static int checkIfSystemReady();
 static WAL_STATUS mapStatus(int ret);
 static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size,void* user_data);
 static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID);
@@ -2113,12 +2114,30 @@ static void waitUntilSystemReady()
 	);
 
 	FILE *file;
+	int wait_time = 0;
           
 	// Wait till Call back touches the indicator to proceed further
 	while((file = fopen("/var/tmp/webpaready", "r")) == NULL)
 	{
 		WalInfo("Waiting for system ready signal\n");
+		// After waiting for 24 * 5 = 120s (2mins) send dbus message to CR to query for system ready
+		if(wait_time == 24)
+		{
+			wait_time = 0;
+			if(checkIfSystemReady())
+			{
+				WalInfo("Checked CR - System is ready, proceed with Webpa start up\n");
+				system("touch /var/tmp/webpaready");
+				break;
+				//Break out, System ready signal already delivered
+			}
+			else
+			{
+				WalInfo("Queried CR for system ready after waiting for 2 mins, it is still not ready\n");
+			}
+		}
 		sleep(5);
+		wait_time++;
 	};
 	// In case of Web PA restart, we should be having webpaready already touched.
 	// In normal boot up we will reach here only when system ready is received.
@@ -2129,4 +2148,19 @@ static void waitUntilSystemReady()
 	}	
 }
 
+/**
+ * @brief checkIfSystemReady Function to query CR and check if system is ready.
+ * This is just in case webpa registers for the systemReadySignal event late.
+ * If SystemReadySignal is already sent then this will return 1 indicating system is ready.
+ */
+static int checkIfSystemReady()
+{
+	char str[MAX_PARAMETERNAME_LEN/2];
+	int val, ret;
+	snprintf(str, sizeof(str), "eRT.%s", CCSP_DBUS_INTERFACE_CR);
+	// Query CR for system ready
+	ret = CcspBaseIf_isSystemReady(bus_handle, str, &val);
+	WalInfo("checkIfSystemReady(): ret %d, val %d\n", ret, val);
+	return val;
+}
 
