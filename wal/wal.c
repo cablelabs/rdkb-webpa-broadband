@@ -31,7 +31,7 @@
 /* WebPA Configuration for RDKB */
 #define RDKB_WEBPA_COMPONENT_NAME            "com.cisco.spvtg.ccsp.webpaagent"
 #define RDKB_WEBPA_CFG_FILE                  "/nvram/webpa_cfg.json"
-#define RDKB_WEBPA_CFG_FILE_SRC              "/fss/gw/usr/ccsp/webpa/webpa_cfg.json"
+#define RDKB_WEBPA_CFG_FILE_SRC              "/etc/webpa_cfg.json"
 #define RDKB_WEBPA_CFG_DEVICE_INTERFACE      "erouter0"
 #define RDKB_WEBPA_DEVICE_MAC                "Device.DeviceInfo.X_COMCAST-COM_CM_MAC"
 #define RDKB_XPC_SYNC_PARAM_CID              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CID"
