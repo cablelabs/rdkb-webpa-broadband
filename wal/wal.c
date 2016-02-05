@@ -39,6 +39,7 @@
 #define RDKB_XPC_SYNC_PARAM_CID              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CID"
 #define RDKB_XPC_SYNC_PARAM_CMC              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CMC"
 #define RDKB_FIRMWARE_VERSION		     "Device.DeviceInfo.X_CISCO_COM_FirmwareName"
+#define RDKB_DEVICE_UP_TIME		     		"Device.DeviceInfo.UpTime"
 #define RDKB_XPC_SYNC_PARAM_SPV              "Device.DeviceInfo.Webpa.X_COMCAST-COM_SyncProtocolVersion"
 #define STR_NOT_DEFINED                      "Not Defined"
 
@@ -196,10 +197,10 @@ static void prepareParamGroups(ParamCompList **ParamGroup,int paramCount,int cnt
 extern void getCurrentTime(struct timeval *timer);
 extern long timeValDiff(struct timeval *starttime, struct timeval *finishtime);
 static int addRow(const char *object,char *compName,char *dbusPath,int *retIndex);
-static int updateRow(char *objectName,TableData *list,int retIndex,char *compName,char *dbusPath,char *retObject);
+static int updateRow(char *objectName,TableData *list,char *compName,char *dbusPath,char **retObject);
 static int deleteRow(const char *object);
 static char * stripParam(char * str, const char * findStr);
-static void getDynamicTableParams(const char *objectName,char * key,char *** objList, int *totalParams);
+static int getDynamicTableParams(const char *objectName,char * key,char *** objList, int *totalParams);
 
 extern ANSC_HANDLE bus_handle;
 
@@ -2184,12 +2185,13 @@ static int checkIfSystemReady()
 	WalInfo("checkIfSystemReady(): ret %d, val %d\n", ret, val);
 	return val;
 }
-void addRowTable(const char *objectName, TableData *list,char *retObject, WAL_STATUS *retStatus)
+void addRowTable(const char *objectName, TableData *list,char **retObject, WAL_STATUS *retStatus)
 {
         int ret = 0, index =0, status =0, error =0;
         char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
         char compName[MAX_PARAMETERNAME_LEN/2] = { 0 };
 	char dbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	char tempParamName[MAX_PARAMETERNAME_LEN] = { 0 };
 	
 	WalPrint("objectName : %s\n",objectName);
 	walStrncpy(paramName,objectName,sizeof(paramName));
@@ -2209,24 +2211,36 @@ void addRowTable(const char *objectName, TableData *list,char *retObject, WAL_ST
 		WalPrint("parameterName: %s, CompName : %s, dbusPath : %s\n", paramName, compName, dbusPath);
 		if(ret == CCSP_SUCCESS)
 		{
-		        ret = updateRow(paramName,list,index,compName,dbusPath,retObject);
+			WalPrint("paramName : %s index : %d\n",paramName,index);
+			snprintf(tempParamName,MAX_PARAMETERNAME_LEN,"%s%d.", paramName, index);
+			WalPrint("tempParamName : %s\n",tempParamName);
+		        ret = updateRow(tempParamName,list,compName,dbusPath,retObject);
 		        if(ret == CCSP_SUCCESS)
 		        {
 		                WalInfo("Table is updated successfully\n");
 		        }
 		        else
 			{
-				WalError("Failed to update table\n");
+				WalError("Failed to update row hence deleting the added row %s\n",tempParamName);
+				ret = deleteRow(tempParamName);
+				if(ret == CCSP_SUCCESS)
+				{
+					ret = CCSP_FAILURE;
+					WalInfo("Reverted the changes.\n");
+				}
 			}
+			
+			WalPrint("retObject before mapping :%s\n",*retObject);
+			IndexMpa_CPEtoWEBPA(retObject);
+			WalPrint("retObject after mapping :%s\n",*retObject);
 		}
 		else
 		{
 		        WalError("Failed to add table\n");
 		}
-
-		WalPrint("retObject : %s\n",retObject);
+		
         }
-        
+        WalPrint("ret : %d\n",ret);
         *retStatus = mapStatus(ret);
 	WalPrint("retStatus : %d\n",*retStatus);
         	        
@@ -2284,13 +2298,14 @@ static int addRow(const char *object,char *compName,char *dbusPath,int *retIndex
 	WalPrint("<==========End of addRow ========>\n ");
 	return ret;
 }
-static int updateRow(char *objectName,TableData *list,int retIndex,char *compName,char *dbusPath,char *retObject)
+static int updateRow(char *objectName,TableData *list,char *compName,char *dbusPath,char **retObject)
 {
         int i=0, ret = -1,numParam =0;
         char **parameterNamesLocal = NULL; 
         char *faultParam = NULL;
 	unsigned int writeID = CCSP_COMPONENT_ID_WebPA;	
 	parameterValStruct_t *val= NULL;
+	
 	WalPrint("<==========Start of updateRow ========>\n ");
   	numParam = list->parameterCount;
   	WalPrint("numParam : %d\n",numParam);
@@ -2301,9 +2316,8 @@ static int updateRow(char *objectName,TableData *list,int retIndex,char *compNam
         for(i =0; i<numParam; i++)
         {
         	parameterNamesLocal[i] = (char *) malloc(sizeof(char ) * MAX_PARAMETERNAME_LEN);
-        	WalPrint("retIndex: %d\n",retIndex);
         	WalPrint("list->parameterNames[%d] : %s\n",i,list->parameterNames[i]);
-                snprintf(parameterNamesLocal[i],MAX_PARAMETERNAME_LEN,"%s%d.%s", objectName, retIndex,list->parameterNames[i]);
+                snprintf(parameterNamesLocal[i],MAX_PARAMETERNAME_LEN,"%s%s", objectName,list->parameterNames[i]);
                 WalPrint("parameterNamesLocal[%d] : %s\n",i,parameterNamesLocal[i]);
         }
         
@@ -2321,14 +2335,10 @@ static int updateRow(char *objectName,TableData *list,int retIndex,char *compNam
         {
                 WalPrint("Failed to do atomic set returns %d\n",ret);
         }
-        else
-        {
-		WalPrint("objectName before mapping :%s\n",objectName);
-		IndexMpa_CPEtoWEBPA(&objectName);
-		WalPrint("objectName after mapping :%s\n",objectName);
-		snprintf(retObject,MAX_PARAMETERNAME_LEN,"%s%d.", objectName, retIndex);
-		WalPrint("retObject : %s\n",retObject);
-        }
+        
+	strcpy(*retObject, objectName);
+	WalPrint("retObject : %s\n",*retObject);
+       
         for(i =0; i<numParam; i++)
         {
         	WAL_FREE(parameterNamesLocal[i]);
@@ -2339,38 +2349,37 @@ static int updateRow(char *objectName,TableData *list,int retIndex,char *compNam
         return ret;
          
 }
-void deleteRowTable(const char *paramName,WAL_STATUS *retStatus)
+void deleteRowTable(const char *object,WAL_STATUS *retStatus)
 {
         int ret = 0,status = 0, error =0;
+	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
 	
-	WalPrint("paramName before mapping : %s\n",paramName);
-	char *temp = (char *) malloc(strlen(paramName +2));
-	strcpy(temp, paramName);
-	WalInfo("deleteRowTable: temp is %s\n",temp);
-	status=IndexMpa_WEBPAtoCPE(temp);
+	WalPrint("object : %s\n",object);
+	walStrncpy(paramName,object,sizeof(paramName));
+        WalPrint("paramName before mapping : %s\n",paramName);
+	status=IndexMpa_WEBPAtoCPE(paramName);
 	if(status == -1)
 	{
 	 	ret = CCSP_ERR_INVALID_PARAMETER_NAME;
 	 	error = 1;
-	 	WalError("Parameter %s is not supported, invalid index. ret = %d\n", temp,ret); 	
+	 	WalError("Parameter %s is not supported, invalid index. ret = %d\n", paramName,ret); 	
 	}
-	WalPrint("paramName after mapping : %s\n",temp);
+	WalPrint("paramName after mapping : %s\n",paramName);
 	if(error != 1)
 	{
-		ret = deleteRow(temp);
+		ret = deleteRow(paramName);
 		if(ret == CCSP_SUCCESS)
 		{
-			WalInfo("%s is deleted Successfully.\n", temp);
+			WalInfo("%s is deleted Successfully.\n", paramName);
 		
 		}
 		else
 		{
-			WalError("%s could not be deleted ret %d\n", temp, ret);
+			WalError("%s could not be deleted ret %d\n", paramName, ret);
 		}
 	}
 
 	*retStatus = mapStatus(ret);
-	WAL_FREE(temp);
 }
 
 
@@ -2431,20 +2440,27 @@ static char * stripParam(char * str, const char * findStr)
 {
 	WalPrint("findStr : %s\n",findStr);
 	char * tok = strstr(str, findStr);
-	tok[0] = '\0';
-	return str ;
+	if(tok != NULL)
+	{
+	        tok[0] = '\0';
+	        return str ;
+	}
+	
+	return NULL;
 
 }
 void replaceTable(const char *objectName,TableData * list,int paramcount,WAL_STATUS *retStatus)
 {
 	int cnt = 0, ret = 0,totalParams = 0,numParam = 0,retIndex =0, error =0;
-	char **deleteList = (char **)malloc(sizeof(char *) * NAME_VALUE_COUNT);
-	
+	char **deleteList = NULL;		
 	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
-	char retObject[MAX_PARAMETERNAME_LEN]= {0};
+	char *retObject = (char *)malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
 	char keyParam[MAX_PARAMETERNAME_LEN/4] = {0};
 	
 	WalPrint("<==========Start of replaceTable ========>\n ");
+	
+	WalPrint("deleteList at the beginning: %p\n",deleteList);
+	WalPrint("retObject at the beginning: %p\n",retObject);
 	WalPrint("objectName : %s\n",objectName);
 	walStrncpy(paramName,objectName,sizeof(paramName));
 	WalPrint("paramName before Mapping : %s\n",paramName);
@@ -2463,43 +2479,46 @@ void replaceTable(const char *objectName,TableData * list,int paramcount,WAL_STA
 		WalPrint("list[0].parameterNames[1]: %s\n",list[0].parameterNames[1]);
 		strcpy(keyParam,list[0].parameterNames[1]);
 		WalPrint("keyParam : %s\n",keyParam);
-		getDynamicTableParams(paramName,keyParam,&deleteList, &totalParams);
-		if(totalParams >0)
+		ret = getDynamicTableParams(paramName,keyParam,&deleteList, &totalParams);
+		if(ret == CCSP_SUCCESS)
 		{		
-			numParam = totalParams/2;
-		}
-		WalPrint("numParam : %d\n",numParam);
-		for(cnt =0; cnt < numParam; cnt++)
-		{
-			WalPrint("Deleting deleteList[%d] : %s\n",cnt,deleteList[cnt]);
-			deleteRowTable(deleteList[cnt],&ret);
-			WalPrint("ret : %d\n",ret);
-		}        
+		        for(cnt =0; cnt < totalParams; cnt++)
+		        {
+			        WalPrint("deleteList[%d] : %s\n",cnt,deleteList[cnt]);
+		        } 
+		        for(cnt =0; cnt < totalParams; cnt++)
+		        {
+			        ret = deleteRow(deleteList[cnt]);
+			        WalPrint("ret : %d\n",ret);
+			        WAL_FREE(deleteList[cnt]);
+			        WalPrint("freed deleteList[%d]\n",cnt);
+		        }        
 		
-		
+	        }
 		for(cnt =0; cnt < paramcount; cnt++)
-		{	
-			
+		{				
 			walStrncpy(paramName,objectName,sizeof(paramName));
-			WalPrint("in loop %d, paramName is %s\n",cnt,paramName);
-	
-			addRowTable(paramName,&list[cnt],retObject,&ret);
-			WalPrint("retObject : %s\n",retObject); 
-			WalPrint("ret : %d\n",ret); 
-			retStatus[cnt] = ret;
-			WalPrint("retStatus[%d] : %d\n",cnt,retStatus[cnt]);
+			WalPrint("in loop %d, paramName is %s\n",cnt,paramName);	
+			addRowTable(paramName,&list[cnt],&retObject,&ret);			
+		        WalPrint("retObject : %s\n",retObject); 
+		        WalPrint("ret : %d\n",ret);
+		        retStatus[cnt] = ret;
+			WalPrint("retStatus[%d] : %d\n",cnt,retStatus[cnt]); 					
 		}
 	}
 	else
 	{
 		*retStatus = mapStatus(ret);
 	}
-		
+	WalPrint("retObject before freeing: %p\n",retObject);
+	WAL_FREE(retObject);
+	WalPrint("freed retObject\n",cnt);
+	WalPrint("deleteList before freeing: %p\n",deleteList);	
 	WAL_FREE(deleteList);
         WalPrint("<==========End of replaceTable ========>\n ");	
 }
 
-static void getDynamicTableParams(const char *objectName,char * key,char *** objList, int *totalParams)
+static int getDynamicTableParams(const char *objectName,char * key,char *** objList, int *totalParams)
 {
         int cnt =0,val_size = 0,ret = 0,cnt1 =0, size =0;
         char compName[MAX_PARAMETERNAME_LEN/2] = { 0 };
@@ -2507,6 +2526,7 @@ static void getDynamicTableParams(const char *objectName,char * key,char *** obj
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
 	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
 	componentStruct_t ** ppComponents = NULL;
+	char *temp = NULL;
 	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
 	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr),"%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
         parameterValStruct_t **parameterval = NULL;
@@ -2533,47 +2553,51 @@ static void getDynamicTableParams(const char *objectName,char * key,char *** obj
 				compName, dbusPath,
 				&objectName,
 				1, &val_size, &parameterval);
-	WalInfo("After GPV ret: %d\n",ret);
+	WalInfo("After GPV ret: %d and parameterval points to %p\n",ret,parameterval);
 	if(ret == CCSP_SUCCESS)
 	{
 		WalInfo("val_size : %d\n",val_size);
-		*totalParams = val_size;
+		*totalParams = val_size/2;
 		WalInfo("totalParams : %d\n",*totalParams);
+		
+		*objList = (char **)malloc(sizeof(char *) * val_size/2);
+		WalPrint("objList points to %p\n",*objList);
+		
 		for (cnt = 0; cnt < val_size; cnt++)
-		{
-			WalInfo("Loop %d --- name: %s value: %s type: %d\n",cnt,parameterval[cnt]->parameterName,parameterval[cnt]->parameterValue,parameterval[cnt]->type);
+		{			
 			if(cnt1 < val_size)
-			{
-				IndexMpa_CPEtoWEBPA(&parameterval[cnt1]->parameterName);
-				WalPrint("objectName after mapping :%s\n",parameterval[cnt1]->parameterName);
-				WalInfo("cnt1 is %d\n",cnt1);
-				objList[0][cnt] = (char *)malloc(MAX_PARAMETERNAME_LEN);
-				strcpy(objList[0][cnt],stripParam(parameterval[cnt1]->parameterName,key));
-				WalPrint("objList[0][%d] : %s\n",cnt,objList[0][cnt]);
+			{				
+				(*objList)[cnt] = (char *)malloc(sizeof(char) * MAX_PARAMETERNAME_LEN);
+				WalPrint("cnt1: %d name : %s key : %s\n",cnt1,parameterval[cnt1]->parameterName,key);
+				temp = stripParam(parameterval[cnt1]->parameterName,key);
+				if(temp != NULL)
+				{
+				        strcpy((*objList)[cnt],temp);
+				        WalPrint("(*objList)[%d] : %s\n",cnt,(*objList)[cnt]);
+				}
+				else
+				{
+				        WalError("stripParam failed \n ");
+				        return CCSP_FAILURE;
+				}
 				cnt1 = cnt1 + 2;
 			}
 			
+			WalInfo("Loop %d --- name: %s value: %s type: %d\n",cnt,parameterval[cnt]->parameterName,parameterval[cnt]->parameterValue,parameterval[cnt]->type);
+			
 		}
+		
 		WalPrint("B4 free\n");
-		for (cnt = 0; cnt < val_size; cnt++)
-		{
-			WalPrint("loop %d\n",cnt);
-			WalPrint("B4 free parameterval[cnt]->parameterName\n");
-			WAL_FREE(parameterval[cnt]->parameterName);
-			WalPrint("B4 free parameterval[cnt]->parameterValue\n");
-			WAL_FREE(parameterval[cnt]->parameterValue);
-			WalPrint("loop %d end\n",cnt);
-		}
-		WalPrint("B4 free parameterval\n");
-		WAL_FREE(parameterval);
-		//free_parameterValStruct_t (bus_handle,size,parameterval);
+		free_parameterValStruct_t (bus_handle,val_size,parameterval);
 		WalPrint("After free\n");	
 	}
 	else
 	{
 		WalError("Failed to get values for %s ret: %d\n",objectName,ret);
+		return ret;
 	}
 	WalPrint("<================ End of getDynamicTableParams =============>\n ");
+	return CCSP_SUCCESS;
 }
 
 
