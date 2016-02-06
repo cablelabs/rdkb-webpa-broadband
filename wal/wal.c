@@ -1965,7 +1965,11 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
 		case WCFG_FIRMWARE_VERSION:
 			ret = RDKB_FIRMWARE_VERSION;
 			break;
-			
+		
+		case WCFG_DEVICE_UP_TIME:
+			ret = RDKB_DEVICE_UP_TIME;
+			break;
+	
 		case WCFG_XPC_SYNC_PARAM_SPV:
 			ret = RDKB_XPC_SYNC_PARAM_SPV;
 			break;
