@@ -9,6 +9,8 @@ INCPATH += $(CCSP_ROOT_DIR)/hal/include
 INCPATH += $(CCSP_ROOT_DIR)/webpa/include
 INCPATH += $(CCSP_ROOT_DIR)/webpa/source/wal/wal/include
 INCPATH += $(CCSP_ROOT_DIR)/../generic/rdk_logger/include/
+INCPATH += $(CCSP_ROOT_DIR)/ExtDependency/opensource_work/intel_usg/rdkb_arm/msgpack/include
+INCPATH += $(CCSP_ROOT_DIR)/ExtDependency/opensource_work/intel_usg/rdkb_arm/base64
 
 CFLAGS += $(addprefix -I, $(INCPATH))
 
@@ -17,7 +19,7 @@ CFLAGS += -Wall
 CFLAGS += -DFEATURE_SUPPORT_RDKLOG
 CFLAGS += "-DPLATFORM_RDKB"
 LDFLAGS    += -L$(CCSP_OPENSOURCE_DIR)/lib -L$(CCSP_OUT_DIR)/../../lib/ -lrdkloggers -L$(CCSP_OUT_DIR)/../../lib/ -llog4c
-LDFLAGS+= -lccsp_common -lm -lpthread 
+LDFLAGS+= -lccsp_common -lm -lpthread -lbase64 -lmsgpack
 
 target := $(ComponentBuildDir)/libwal.so
 source_files := $(call add_files_from_base,,'*.c')
@@ -51,6 +53,7 @@ install:
 	@install -d -m 0755 $(CCSP_OUT_DIR)/webpa
 	@install -m 0755 $(target) $(CCSP_OUT_DIR)/webpa
 	@cp -f $(target) $(CCSP_OUT_DIR)/
+	@cp -f $(CCSP_ROOT_DIR)/webpa/source/wal/wal/arch/intel_usg/boards/rdkb_arm/config/comcast/WebpaAgent.xml $(CCSP_OUT_DIR)/webpa
 	@cp $(target) $(CCSP_STAGING_ROOT)/lib
 
 

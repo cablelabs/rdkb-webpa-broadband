@@ -219,6 +219,12 @@ WAL_STATUS RegisterNotifyCB(notifyCB cb)
 	return WAL_SUCCESS;
 }
 
+void * getNotifyCB()
+{
+	WalPrint("Inside getNotifyCB\n");
+	return notifyCbFn;
+}
+
 static int getComponentDetails(char *parameterName,char *compName,char *dbusPath, int * error)
 {
 	char objectName[MAX_PARAMETERNAME_LEN] = {'\0'};
@@ -659,10 +665,16 @@ static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* u
 	paramNotify->type = val->type;
 	paramNotify->changeSource = mapWriteID(val->writeID);
 
+	NotifyData *notifyDataPtr = (NotifyData *) malloc(sizeof(NotifyData) * 1);
+	notifyDataPtr->type = PARAM_NOTIFY;
+	Notify_Data *notify_data = (Notify_Data *) malloc(sizeof(Notify_Data) * 1);
+	notify_data->notify = paramNotify;
+	notifyDataPtr->data = notify_data;
+
 	WalInfo("Notification Event from stack: Parameter Name: %s, Old Value: %s, New Value: %s, Data Type: %d, Change Source: %d\n",
 			paramNotify->paramName, paramNotify->oldValue, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
 
-	(*notifyCbFn)(paramNotify);
+	(*notifyCbFn)(notifyDataPtr);
 }
 
 /**
@@ -698,11 +710,17 @@ void sendIoTNotification(void* iotMsg, int size)
 	paramNotify->newValue = str;
 	paramNotify->type = WAL_STRING;
 	paramNotify->changeSource = CHANGED_BY_UNKNOWN;
+	
+	NotifyData *notifyDataPtr = (NotifyData *) malloc(sizeof(NotifyData) * 1);
+	notifyDataPtr->type = PARAM_NOTIFY;
+	Notify_Data *notify_data = (Notify_Data *) malloc(sizeof(Notify_Data) * 1);
+	notify_data->notify = paramNotify;
+	notifyDataPtr->data = notify_data;
 
 	WalInfo("Notification Event from IoT: Parameter Name: %s, New Value: %s, Data Type: %d, Change Source: %d\n",
 			paramNotify->paramName, paramNotify->newValue, paramNotify->type, paramNotify->changeSource);
 
-	(*notifyCbFn)(paramNotify);
+	(*notifyCbFn)(notifyDataPtr);
 }
 
 static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID)

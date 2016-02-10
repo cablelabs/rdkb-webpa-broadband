@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<dataModelInfo>
+  <version>1</version>
+  <moduleName>COSA_TR181_Webpa</moduleName>
+  <author></author>
+  <description></description>
+  <library>
+    <path>libwal</path>
+    <func_Init>COSA_Init</func_Init>
+  </library>
+  <objects>
+    <object>
+      <name>Webpa</name>
+      <objectType>object</objectType>
+      <functions>
+        <func_SetParamStringValue>Webpa_SetParamStringValue</func_SetParamStringValue>
+      </functions>
+      <parameters>
+         <parameter>
+            <name>PostData</name>
+            <type>string</type>
+            <syntax>string</syntax>
+            <writable>true</writable>
+         </parameter>
+	</parameters>
+    </object>
+ </objects>
+</dataModelInfo>
