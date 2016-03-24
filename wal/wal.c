@@ -39,7 +39,9 @@
 #define RDKB_XPC_SYNC_PARAM_CID              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CID"
 #define RDKB_XPC_SYNC_PARAM_CMC              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CMC"
 #define RDKB_FIRMWARE_VERSION		     "Device.DeviceInfo.X_CISCO_COM_FirmwareName"
-#define RDKB_DEVICE_UP_TIME		     		"Device.DeviceInfo.UpTime"
+#define RDKB_DEVICE_UP_TIME		     "Device.DeviceInfo.UpTime"
+#define RDKB_MANUFACTURER		     "Device.DeviceInfo.Manufacturer"
+#define RDKB_MODEL_NAME			     "Device.DeviceInfo.ModelName"
 #define RDKB_XPC_SYNC_PARAM_SPV              "Device.DeviceInfo.Webpa.X_COMCAST-COM_SyncProtocolVersion"
 #define STR_NOT_DEFINED                      "Not Defined"
 
@@ -2077,6 +2079,14 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
 		
 		case WCFG_DEVICE_UP_TIME:
 			ret = RDKB_DEVICE_UP_TIME;
+			break;
+
+		case WCFG_MANUFACTURER:
+			ret = RDKB_MANUFACTURER;
+			break;
+
+		case WCFG_MODEL_NAME:
+			ret = RDKB_MODEL_NAME;
 			break;
 	
 		case WCFG_XPC_SYNC_PARAM_SPV:
