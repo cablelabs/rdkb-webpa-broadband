@@ -36,6 +36,8 @@
 #define RDKB_WEBPA_CFG_FILE_SRC              "/etc/webpa_cfg.json"
 #define RDKB_WEBPA_CFG_DEVICE_INTERFACE      "erouter0"
 #define RDKB_WEBPA_DEVICE_MAC                "Device.DeviceInfo.X_COMCAST-COM_CM_MAC"
+#define RDKB_WEBPA_DEVICE_REBOOT_PARAM       "Device.X_CISCO_COM_DeviceControl.RebootDevice"
+#define RDKB_WEBPA_DEVICE_REBOOT_VALUE       "Device"
 #define RDKB_XPC_SYNC_PARAM_CID              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CID"
 #define RDKB_XPC_SYNC_PARAM_CMC              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CMC"
 #define RDKB_FIRMWARE_VERSION		     "Device.DeviceInfo.X_CISCO_COM_FirmwareName"
@@ -268,7 +270,7 @@ static int getComponentDetails(char *parameterName,char ***compName,char ***dbus
 			*error = 1;
 			return ret;
 		}
-		WalInfo("Get component for parameterName : %s from stack\n",parameterName);
+		WalPrint("Get component for parameterName : %s from stack\n",parameterName);
 
 		ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
 			dst_pathname_cr, parameterName, l_Subsystem, &ppComponents, &size);
@@ -284,7 +286,7 @@ static int getComponentDetails(char *parameterName,char ***compName,char ***dbus
 				localDbusPath[i] = (char *) malloc (sizeof(char) * MAX_PARAMETERNAME_LEN);
 				strcpy(localCompName[i],ppComponents[i]->componentName);
 				strcpy(localDbusPath[i],ppComponents[i]->dbusPath);
-				WalInfo("localCompName[%d] : %s, localDbusPath[%d] : %s\n",i,localCompName[i],i, localDbusPath[i]);
+				WalPrint("localCompName[%d] : %s, localDbusPath[%d] : %s\n",i,localCompName[i],i, localDbusPath[i]);
 			}
 			
 			*retCount = size;
@@ -308,7 +310,7 @@ static int getComponentDetails(char *parameterName,char ***compName,char ***dbus
 		strcpy(localDbusPath[0],tempDbusPath);
 		*retCount = 1;
 		size = 1;
-		WalInfo("localCompName[0] : %s, localDbusPath[0] : %s\n",localCompName[0], localDbusPath[0]);
+		WalPrint("localCompName[0] : %s, localDbusPath[0] : %s\n",localCompName[0], localDbusPath[0]);
 	}
 	
 	*compName = localCompName;
@@ -437,12 +439,12 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 	{
 		for(cnt1 = 0; cnt1 < compCount; cnt1++)
 		{
-			WalInfo("********** Parameter group ****************\n");
-		  	WalInfo("ParamGroup[%d].comp_name :%s, ParamGroup[%d].dbus_path :%s, ParamGroup[%d].parameterCount :%d\n",cnt1,ParamGroup[cnt1].comp_name, cnt1,ParamGroup[cnt1].dbus_path, cnt1,ParamGroup[cnt1].parameterCount);
+			WalPrint("********** Parameter group ****************\n");
+		  	WalPrint("ParamGroup[%d].comp_name :%s, ParamGroup[%d].dbus_path :%s, ParamGroup[%d].parameterCount :%d\n",cnt1,ParamGroup[cnt1].comp_name, cnt1,ParamGroup[cnt1].dbus_path, cnt1,ParamGroup[cnt1].parameterCount);
 		  	
 		  	for(cnt2 = 0; cnt2 < ParamGroup[cnt1].parameterCount; cnt2++)
 		  	{
-			 		WalInfo("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
+			 		WalPrint("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
 		  	}
 			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
 			{
@@ -588,12 +590,12 @@ void getAttributes(const char *paramName[], const unsigned int paramCount, AttrV
 	{
 		for(cnt1 = 0; cnt1 < compCount; cnt1++)
 		{
-			WalInfo("********** Parameter group ****************\n");
+			WalPrint("********** Parameter group ****************\n");
 		  	WalInfo("ParamGroup[%d].comp_name :%s, ParamGroup[%d].dbus_path :%s, ParamGroup[%d].parameterCount :%d\n",cnt1,ParamGroup[cnt1].comp_name, cnt1,ParamGroup[cnt1].dbus_path, cnt1,ParamGroup[cnt1].parameterCount);
 		  	
 		  	for(cnt2 = 0; cnt2 < ParamGroup[cnt1].parameterCount; cnt2++)
 		  	{
-			 		WalInfo("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
+			 		WalPrint("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
 		  	}
 			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
 			{
@@ -1245,7 +1247,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 		}
 	}
 	
-	WalInfo("parameterName: %s, CompName : %s, dbusPath : %s\n", paramName, CompName, dbusPath);
+	WalPrint("parameterName: %s, CompName : %s, dbusPath : %s\n", paramName, CompName, dbusPath);
 
 	for (cnt = 0; cnt < paramCount; cnt++) 
 	{
@@ -1301,7 +1303,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 			}
 		}
 		
-		WalInfo("parameterName: %s, tempCompName : %s\n", paramName, tempCompName);
+		WalPrint("parameterName: %s, tempCompName : %s\n", paramName, tempCompName);
 		if (strcmp(CompName, tempCompName) != 0)
 		{
 			WalError("Error: Parameters does not belong to the same component\n");
@@ -2065,6 +2067,14 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
 			ret = RDKB_WEBPA_DEVICE_MAC;
 			break;
 
+		case WCFG_DEVICE_REBOOT_PARAM:
+			ret = RDKB_WEBPA_DEVICE_REBOOT_PARAM;
+			break;
+
+		case WCFG_DEVICE_REBOOT_VALUE:
+			ret = RDKB_WEBPA_DEVICE_REBOOT_VALUE;
+			break;
+
 		case WCFG_XPC_SYNC_PARAM_CID:
 			ret = RDKB_XPC_SYNC_PARAM_CID;
 			break;
@@ -2342,7 +2352,7 @@ void addRowTable(const char *objectName, TableData *list,char **retObject, WAL_S
 		        {
 				strcpy(*retObject, tempParamName);
 				WalPrint("retObject : %s\n",*retObject);
-		                WalInfo("Table is updated successfully\n");
+		                WalPrint("Table is updated successfully\n");
 				WalPrint("retObject before mapping :%s\n",*retObject);
 				IndexMpa_CPEtoWEBPA(retObject);
 				WalPrint("retObject after mapping :%s\n",*retObject);
@@ -2414,7 +2424,7 @@ static int addRow(const char *object,char *compName,char *dbusPath,int *retIndex
         WalPrint("ret = %d index : %d\n",ret,index);    
         if ( ret == CCSP_SUCCESS )
         {
-                WalInfo("Execution succeed.\n");
+                WalPrint("Execution succeed.\n");
                 WalInfo("%s%d. is added.\n", object, index);               
                 *retIndex = index;
                 WalPrint("retIndex : %d\n",*retIndex);               
@@ -2457,7 +2467,7 @@ static int updateRow(char *objectName,TableData *list,char *compName,char *dbusP
 				compName, dbusPath,
 				parameterNamesLocal,
 				numParam, &val_size, &parameterval);
-	WalInfo("After GPV ret: %d, val_size: %d\n",retGet,val_size);
+	WalPrint("After GPV ret: %d, val_size: %d\n",retGet,val_size);
 	if(retGet == CCSP_SUCCESS && val_size > 0)
 	{
 		WalPrint("val_size : %d, numParam %d\n",val_size, numParam);
@@ -2516,7 +2526,7 @@ void deleteRowTable(const char *object,WAL_STATUS *retStatus)
 		ret = deleteRow(paramName);
 		if(ret == CCSP_SUCCESS)
 		{
-			WalInfo("%s is deleted Successfully.\n", paramName);
+			WalPrint("%s is deleted Successfully.\n", paramName);
 		
 		}
 		else
@@ -2569,7 +2579,7 @@ static int deleteRow(const char *object)
         WalPrint("ret = %d\n",ret);    
         if ( ret == CCSP_SUCCESS )
         {
-                WalInfo("Execution succeed.\n");
+                WalPrint("Execution succeed.\n");
                 WalInfo("%s is deleted.\n", object);
         }
         else
