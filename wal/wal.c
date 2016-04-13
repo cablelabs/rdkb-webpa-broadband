@@ -889,6 +889,9 @@ static int getParamValues(char *pParameterName, ParamVal ***parametervalArr, int
 			for (i = 0; i < val_size; i++)
 			{
 				IndexMpa_CPEtoWEBPA(&parameterval[i]->parameterName);
+
+				IndexMpa_CPEtoWEBPA(&parameterval[i]->parameterValue);
+
 				parametervalArr[0][i] = parameterval[i];
 				WalPrint("success: %s %s %d \n",parametervalArr[0][i]->name,parametervalArr[0][i]->value,parametervalArr[0][i]->type);
 			}
@@ -981,6 +984,9 @@ static int getAtomicParamValues(char *parameterNames[], int paramCount, char *Co
 				{
 					WalPrint("cnt+startIndex : %d\n",cnt+startIndex);
 					IndexMpa_CPEtoWEBPA(&parameterval[cnt]->parameterName);
+
+					IndexMpa_CPEtoWEBPA(&parameterval[cnt]->parameterValue);
+
 					parametervalArr[0][cnt+startIndex] = parameterval[cnt];
 					WalPrint("success: %s %s %d \n",parametervalArr[0][cnt+startIndex]->name,parametervalArr[0][cnt+startIndex]->value,parametervalArr[0][cnt+startIndex]->type);
 				}
@@ -1846,6 +1852,7 @@ static void IndexMpa_CPEtoWEBPA(char **ppParameterName)
 	char* instNumStart = NULL;
 	char restDmlString[WIFI_MAX_STRING_LEN];
 	char *pParameterName = *ppParameterName;
+
 	for (i = 0; i < WIFI_PARAM_MAP_SIZE; i++) 
 	{
 		dmlNameLen = strlen(CcspDmlName[i]);
