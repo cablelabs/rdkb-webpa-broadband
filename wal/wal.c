@@ -175,7 +175,7 @@ static void ccspSystemReadySignalCB(void* user_data);
 static void waitUntilSystemReady();
 static int checkIfSystemReady();
 static WAL_STATUS mapStatus(int ret);
-static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size,void* user_data);
+void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size,void* user_data);
 static PARAMVAL_CHANGE_SOURCE mapWriteID(unsigned int writeID);
 static int getParamValues(char *pParameterName, ParamVal ***parametervalArr,int *TotalParams);
 static int getAtomicParamValues(char *pParameterName[], int paramCount, char *CompName, char *dbusPath, ParamVal ***parametervalArr, int startIndex,int *TotalParams);
@@ -724,7 +724,7 @@ static WAL_STATUS mapStatus(int ret)
  * @param[in] size 
  * @param[in] user_data
  */
-static void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* user_data)
+void ccspWebPaValueChangedCB(parameterSigStruct_t* val, int size, void* user_data)
 {
 	WalPrint("Inside CcspWebpaValueChangedCB\n");
 
@@ -1633,6 +1633,7 @@ static int setParamAttributes(const char *pParameterName, const AttrVal *attArr)
 
 	if (ret == CCSP_SUCCESS && size == 1)
 	{
+#ifndef USE_NOTIFY_COMPONENT
 		ret = CcspBaseIf_Register_Event(bus_handle, ppComponents[0]->componentName, "parameterValueChangeSignal");
 
 		if (CCSP_SUCCESS != ret)
@@ -1641,6 +1642,7 @@ static int setParamAttributes(const char *pParameterName, const AttrVal *attArr)
 		}
 
 		CcspBaseIf_SetCallback2(bus_handle, "parameterValueChangeSignal", ccspWebPaValueChangedCB, NULL);
+#endif
 
 		attriStruct.parameterName = paramName;
 		notificationType = atoi(attArr->value);
@@ -1731,6 +1733,7 @@ static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal 
 		WalPrint("notificationType : %d\n",notificationType);
 		if(notificationType == 1)
 		{
+#ifndef USE_NOTIFY_COMPONENT
 			ret = CcspBaseIf_Register_Event(bus_handle, compName[0], "parameterValueChangeSignal");
 
 			if (CCSP_SUCCESS != ret)
@@ -1739,6 +1742,7 @@ static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal 
 			}
 
 			CcspBaseIf_SetCallback2(bus_handle, "parameterValueChangeSignal", ccspWebPaValueChangedCB, NULL);
+#endif
 		}
 		attriStruct[cnt].parameterName = malloc( sizeof(char) * MAX_PARAMETERNAME_LEN);
 		walStrncpy(attriStruct[cnt].parameterName,paramName,MAX_PARAMETERNAME_LEN);
