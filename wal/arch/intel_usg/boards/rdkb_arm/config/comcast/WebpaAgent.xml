@@ -22,6 +22,12 @@
             <syntax>string</syntax>
             <writable>true</writable>
          </parameter>
+         <parameter>
+            <name>WebPA_Notification</name>
+            <type>string</type>
+            <syntax>string</syntax>
+            <writable>true</writable>
+         </parameter>	 
 	</parameters>
     </object>
  </objects>

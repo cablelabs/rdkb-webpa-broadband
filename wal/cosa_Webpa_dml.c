@@ -5,6 +5,7 @@
 #include "msgpack.h"
 #include "base64.h"
 #include "wal.h"
+#include "ccsp_base_api.h"
 
 //static WebPA_Dispatcher message_dispatch_callback = NULL;
 void (*notifyCbFnPtr)(NotifyData*) = NULL;
@@ -64,6 +65,18 @@ Webpa_SetParamStringValue
 	char * decodeMsg =NULL;
 	int decodeMsgSize =0;
 	int size =0;
+#ifdef USE_NOTIFY_COMPONENT
+	
+	char* p_write_id;
+	char* p_new_val;
+	char* p_old_val;
+	char* p_notify_param_name;
+	char* st;
+	char* p_val_type;
+	UINT value_type,write_id;
+	parameterSigStruct_t param = {0};
+#endif
+
 	WalPrint("<========= Start of Webpa_SetParamStringValue ========>\n");
 	WalInfo("Received data ParamName %s,data length: %d bytes, Value : %s\n",ParamName, strlen(pString), pString);
 	
@@ -128,7 +141,50 @@ Webpa_SetParamStringValue
 		WalPrint("----End PostData parameter----\n");
 
 		return TRUE;
-	}         
+	}   
+	
+	if( AnscEqualString(ParamName, "WebPA_Notification", TRUE))
+	{
+	#ifdef USE_NOTIFY_COMPONENT
+
+		printf(" \n WebPA : Notification Received \n");
+		p_notify_param_name = strtok_r(pString, ",", &st);
+		p_write_id = strtok_r(NULL, ",", &st);
+		p_new_val = strtok_r(NULL, ",", &st);
+		p_old_val = strtok_r(NULL, ",", &st);
+		
+		//printf(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
+		if( AnscEqualString(p_notify_param_name, "Connected-Client", TRUE) == FALSE)
+		{
+			
+			p_val_type = strtok_r(NULL, ",", &st);
+
+			value_type = atoi(p_val_type);
+			write_id = atoi(p_write_id);
+
+			printf(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
+			printf(" \n Notification : New Value = %s \n", p_new_val);
+			printf(" \n Notification : Old Value = %s \n", p_old_val);
+			printf(" \n Notification : Value Type = %d \n", value_type);
+			printf(" \n Notification : Component ID = %d \n", write_id);
+
+			param.parameterName = p_notify_param_name;
+			param.oldValue = p_old_val;
+			param.newValue = p_new_val;
+			param.type = value_type;
+			param.writeID = write_id;
+
+			ccspWebPaValueChangedCB(&param,0,NULL);
+		}
+		else
+		{
+			printf(" \n Notification : Interface = %s \n", p_write_id);
+			printf(" \n Notification : MAC = %s \n", p_new_val);
+			printf(" \n Notification : Status = %s \n", p_old_val);
+		}
+#endif
+		return TRUE;
+	}    
 	WalPrint("<=========== End of Webpa_SetParamStringValue ========\n");
 
     return FALSE;
