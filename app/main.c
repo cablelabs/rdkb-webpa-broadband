@@ -11,6 +11,10 @@
 #include "stdlib.h"
 #include "signal.h"
 
+#ifdef INCLUDE_BREAKPAD
+#include "breakpad_wrapper.h"
+#endif
+
 /*----------------------------------------------------------------------------*/
 /*                             Function Prototypes                            */
 /*----------------------------------------------------------------------------*/
@@ -29,6 +33,10 @@ int main()
 
 	LOGInit();
 
+#ifdef INCLUDE_BREAKPAD
+    breakpad_ExceptionHandler();
+#else
+
 	signal(SIGTERM, sig_handler);
 	signal(SIGINT, sig_handler);
 	signal(SIGUSR1, sig_handler);
@@ -41,7 +49,7 @@ int main()
 	signal(SIGQUIT, sig_handler);
 	signal(SIGHUP, sig_handler);
 	signal(SIGALRM, sig_handler);
-
+#endif
 	const char *pComponentName = WEBPA_COMPONENT_NAME;
 	WalInfo("********** Starting component: %s **********\n ", pComponentName); 
 
