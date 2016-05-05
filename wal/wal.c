@@ -35,7 +35,11 @@
 #define RDKB_WEBPA_CFG_FILE                  "/nvram/webpa_cfg.json"
 #define RDKB_WEBPA_CFG_FILE_SRC              "/etc/webpa_cfg.json"
 #define RDKB_WEBPA_CFG_DEVICE_INTERFACE      "erouter0"
+#if defined(_COSA_BCM_MIPS_)
+#define RDKB_WEBPA_DEVICE_MAC                "Device.DPoE.Mac_address"
+#else
 #define RDKB_WEBPA_DEVICE_MAC                "Device.DeviceInfo.X_COMCAST-COM_CM_MAC"
+#endif
 #define RDKB_WEBPA_DEVICE_REBOOT_PARAM       "Device.X_CISCO_COM_DeviceControl.RebootDevice"
 #define RDKB_WEBPA_DEVICE_REBOOT_VALUE       "Device"
 #define RDKB_XPC_SYNC_PARAM_CID              "Device.DeviceInfo.Webpa.X_COMCAST-COM_CID"
@@ -142,7 +146,11 @@ static char *objectList[] ={
 "Device.NeighborDiscovery.",
 "Device.IPv6rd.",
 "Device.X_CISCO_COM_MLD.",
+#if defined(_COSA_BCM_MIPS_)
+"Device.DPoE.",
+#else
 "Device.X_CISCO_COM_CableModem.",
+#endif
 "Device.X_Comcast_com_ParentalControl.",
 "Device.X_CISCO_COM_Diagnostics.",
 "Device.X_CISCO_COM_MultiLAN.",
