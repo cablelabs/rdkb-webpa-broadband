@@ -143,7 +143,7 @@ Webpa_SetParamStringValue
 		return TRUE;
 	}   
 	
-	if( AnscEqualString(ParamName, "WebPA_Notification", TRUE))
+	if( AnscEqualString(ParamName, "X_RDKCENTRAL-COM_WebPA_Notification", TRUE))
 	{
 	#ifdef USE_NOTIFY_COMPONENT
 
@@ -152,12 +152,9 @@ Webpa_SetParamStringValue
 		p_write_id = strtok_r(NULL, ",", &st);
 		p_new_val = strtok_r(NULL, ",", &st);
 		p_old_val = strtok_r(NULL, ",", &st);
+		p_val_type = strtok_r(NULL, ",", &st);
 		
 		//printf(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
-		if( AnscEqualString(p_notify_param_name, "Connected-Client", TRUE) == FALSE)
-		{
-			
-			p_val_type = strtok_r(NULL, ",", &st);
 
 			value_type = atoi(p_val_type);
 			write_id = atoi(p_write_id);
@@ -175,13 +172,25 @@ Webpa_SetParamStringValue
 			param.writeID = write_id;
 
 			ccspWebPaValueChangedCB(&param,0,NULL);
-		}
-		else
-		{
-			printf(" \n Notification : Interface = %s \n", p_write_id);
-			printf(" \n Notification : MAC = %s \n", p_new_val);
-			printf(" \n Notification : Status = %s \n", p_old_val);
-		}
+#endif
+		return TRUE;
+	}    
+
+	if( AnscEqualString(ParamName, "X_RDKCENTRAL-COM_Connected-Client", TRUE))
+	{
+	#ifdef USE_NOTIFY_COMPONENT
+	
+		printf(" \n WebPA : Connected-Client Received \n");
+		p_notify_param_name = strtok_r(pString, ",", &st);
+		p_write_id = strtok_r(NULL, ",", &st);
+		p_new_val = strtok_r(NULL, ",", &st);
+		p_old_val = strtok_r(NULL, ",", &st);
+
+		printf(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
+		printf(" \n Notification : Interface = %s \n", p_write_id);
+		printf(" \n Notification : MAC = %s \n", p_new_val);
+		printf(" \n Notification : Status = %s \n", p_old_val);
+		
 #endif
 		return TRUE;
 	}    
