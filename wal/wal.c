@@ -32,6 +32,11 @@
 
 /* WebPA Configuration for RDKB */
 #define RDKB_WEBPA_COMPONENT_NAME            "com.cisco.spvtg.ccsp.webpaagent"
+#define RDKB_PAM_COMPONENT_NAME		     "com.cisco.spvtg.ccsp.pam"
+#define RDKB_PAM_DBUS_PATH		     "/com/cisco/spvtg/ccsp/pam"
+#define RDKB_WIFI_COMPONENT_NAME	     "com.cisco.spvtg.ccsp.wifi"
+#define RDKB_WIFI_DBUS_PATH		     "/com/cisco/spvtg/ccsp/wifi"
+#define RDKB_WIFI_FULL_COMPONENT_NAME	     "eRT.com.cisco.spvtg.ccsp.wifi"
 #define RDKB_WEBPA_CFG_FILE                  "/nvram/webpa_cfg.json"
 #define RDKB_WEBPA_CFG_FILE_SRC              "/etc/webpa_cfg.json"
 #define RDKB_WEBPA_CFG_DEVICE_INTERFACE      "erouter0"
@@ -98,7 +103,6 @@ BOOL bRestartRadio2 = FALSE;
 pthread_mutex_t applySetting_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t applySetting_cond = PTHREAD_COND_INITIALIZER;
 int compCacheSuccessCnt = 0, subCompCacheSuccessCnt = 0;
-char * wifiCompName = NULL;
 static char *CcspDmlName[WIFI_PARAM_MAP_SIZE] = {"Device.WiFi.Radio", "Device.WiFi.SSID", "Device.WiFi.AccessPoint"};
 static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 {10000, 1},
@@ -215,6 +219,8 @@ static int updateRow(char *objectName,TableData *list,char *compName,char *dbusP
 static int deleteRow(const char *object);
 static int handleTableData(const char *objectName,char ***rowList,int *numRows,int *params,TableData ** list);
 static void getWritableParams(char *paramName, char ***writableParams, int *paramCount);
+static void waitForComponentReady(char *compName, char *dbusPath);
+static void checkComponentHealthStatus(char * compName, char * dbusPath, char *status, int *retStatus);
 extern ANSC_HANDLE bus_handle;
 
 /*----------------------------------------------------------------------------*/
@@ -456,7 +462,7 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		  	{
 			 		WalPrint("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
 		  	}
-			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
+			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)) 
 			{
 				WalPrint("Before mutex lock in getValues\n");
 				pthread_mutex_lock (&applySetting_mutex);
@@ -467,7 +473,7 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		  	ret = getAtomicParamValues(ParamGroup[cnt1].parameterName, ParamGroup[cnt1].parameterCount, ParamGroup[cnt1].comp_name, ParamGroup[cnt1].dbus_path, paramValArr, startIndex,&retCount);
 			
 			WalPrint("After getAtomic ParamValues :retCount = %d\n",retCount);
-			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
+			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)) 
 			{
 				pthread_mutex_unlock (&applySetting_mutex);
 				WalPrint("After thread unlock in getValues\n");
@@ -607,7 +613,7 @@ void getAttributes(const char *paramName[], const unsigned int paramCount, AttrV
 		  	{
 			 		WalPrint("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
 		  	}
-			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
+			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)) 
 			{
 				WalPrint("Before mutex lock in getValues\n");
 				pthread_mutex_lock (&applySetting_mutex);
@@ -617,7 +623,7 @@ void getAttributes(const char *paramName[], const unsigned int paramCount, AttrV
 			WalPrint("startIndex %d\n",startIndex);
 		  	ret = getAtomicParamAttributes(ParamGroup[cnt1].parameterName, ParamGroup[cnt1].parameterCount, ParamGroup[cnt1].comp_name, ParamGroup[cnt1].dbus_path, attr, startIndex);
 			
-			if(!strcmp(ParamGroup[cnt1].comp_name,wifiCompName)) 
+			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)) 
 			{
 				pthread_mutex_unlock (&applySetting_mutex);
 				WalPrint("After thread unlock in getValues\n");
@@ -1339,7 +1345,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 		
 	writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
 	
-	if(!strcmp(CompName,wifiCompName)) 
+	if(!strcmp(CompName,RDKB_WIFI_FULL_COMPONENT_NAME)) 
 	{		
 		identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
 		WalPrint("Before mutex lock in setParamValues\n");
@@ -1348,7 +1354,7 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	}
 		
 	ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, val, paramCount, TRUE, &faultParam);
-	if(!strcmp(CompName,wifiCompName)) 
+	if(!strcmp(CompName,RDKB_WIFI_FULL_COMPONENT_NAME)) 
 	{
 		if(ret == CCSP_SUCCESS) //signal apply settings thread only when set is success
 		{
@@ -2136,8 +2142,9 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
  */
 void WALInit()
 {
-	// Wait till all the functional components are ready on the stack. Wait for systemReadySignal before proceeding
-	waitUntilSystemReady();
+	// Wait till PSM, WiFi components are ready on the stack.
+	waitForComponentReady(CCSP_DBUS_PSM,CCSP_DBUS_PATH_PSM);
+	waitForComponentReady(RDKB_WIFI_COMPONENT_NAME,RDKB_WIFI_DBUS_PATH);
 	
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
 	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
@@ -2249,13 +2256,6 @@ void WALInit()
 	subCompCacheSuccessCnt = cnt1;
 	WalPrint("subCompCacheSuccessCnt : %d\n", subCompCacheSuccessCnt);
 	WalPrint("-------- End of populateComponentValArray -------\n");
-
-	// Initialize wifiCompName variable
-	if(ComponentValArray[0].comp_name != NULL)
-	{
-		wifiCompName = ComponentValArray[0].comp_name;
-		WalPrint("wifiCompName %s\n", wifiCompName);
-	}
 
 	// Initialize Apply WiFi Settings handler
 	initApplyWiFiSettings();
@@ -2947,6 +2947,83 @@ static void getWritableParams(char *paramName, char ***writableParams, int *para
 		free_componentStruct_t(bus_handle, size, ppComponents);
 	}
 	WalPrint("==================== End of getWritableParams ==================\n");
+}
+
+/**
+ * @brief waitForReadyCondition wait till PAM component is ready, its health is green
+ * Wait for PAM as need to get CM_MAC, CMC, CID from it before connecting to server
+ */
+void waitForReadyCondition()
+{
+	waitForComponentReady(RDKB_PAM_COMPONENT_NAME,RDKB_PAM_DBUS_PATH);
+}
+
+/**
+ * @brief waitForComponentReady Wait till the given component is ready, its health is green
+ * @param[in] compName RDKB Component Name
+ * @param[in] dbusPath RDKB Dbus Path name
+ */
+static void waitForComponentReady(char *compName, char *dbusPath)
+{
+	char status[32] = {'\0'};
+	int ret = -1;
+	int count = 0;
+	while(1)
+	{
+		checkComponentHealthStatus(compName, dbusPath, status,&ret);
+		if(ret == CCSP_SUCCESS && (strcmp(status, "Green") == 0))
+		{
+			break;
+		}
+		else
+		{
+			if(count > 5)
+			{
+				count = 0;
+				WalError("%s component Health, ret:%d, waiting\n", compName, ret);
+			}
+			sleep(5);
+			count++;
+		}
+		
+	} 
+	WalInfo("%s component health is %s, continue\n", compName, status);
+}
+
+/**
+ * @brief checkComponentHealthStatus Query the health of the given component
+ * @param[in] compName RDKB Component Name
+ * @param[in] dbusPath RDKB Dbus Path name
+ * @param[out] status describes component health Red/Green
+ * @param[out] retStatus error or status code returned by stack call
+ */
+static void checkComponentHealthStatus(char * compName, char * dbusPath, char *status, int *retStatus)
+{
+	int ret = 0, val_size = 0;
+	parameterValStruct_t **parameterval = NULL;
+	char *parameterNames[1] = {};
+	char tmp[MAX_PARAMETERNAME_LEN];
+	char str[MAX_PARAMETERNAME_LEN/2];     
+	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
+	
+	sprintf(tmp,"%s.%s",compName, "Health");
+	parameterNames[0] = tmp;
+	      
+	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
+	snprintf(str, sizeof(str), "%s%s", l_Subsystem, compName);
+	WalPrint("str is:%s\n", str);
+		
+	ret = CcspBaseIf_getParameterValues(bus_handle, str, dbusPath,  parameterNames, 1, &val_size, &parameterval);
+	WalPrint("ret = %d val_size = %d\n",ret,val_size);
+	if(ret == CCSP_SUCCESS)
+	{
+		WalPrint("parameterval[0]->parameterName : %s parameterval[0]->parameterValue : %s\n",parameterval[0]->parameterName,parameterval[0]->parameterValue);
+		strcpy(status, parameterval[0]->parameterValue);
+		WalPrint("status of component:%s\n", status);
+	}
+	free_parameterValStruct_t (bus_handle, val_size, parameterval);
+	
+	*retStatus = ret;
 }
 
 
