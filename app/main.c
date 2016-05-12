@@ -54,7 +54,6 @@ int main()
 	WalInfo("********** Starting component: %s **********\n ", pComponentName); 
 
 	msgBusInit(pComponentName);
-	WALInit();
   
 	WebpaRpcInit();
 	createSocketConnection();
