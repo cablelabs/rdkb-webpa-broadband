@@ -7,7 +7,6 @@
 #include "wal.h"
 #include "ccsp_base_api.h"
 
-//static WebPA_Dispatcher message_dispatch_callback = NULL;
 void (*notifyCbFnPtr)(NotifyData*) = NULL;
 void sendUpstreamNotification(char *UpstreamMsg, int size);
 
@@ -180,16 +179,31 @@ Webpa_SetParamStringValue
 	{
 	#ifdef USE_NOTIFY_COMPONENT
 	
-		printf(" \n WebPA : Connected-Client Received \n");
+		WalPrint(" \n WebPA : Connected-Client Received \n");
 		p_notify_param_name = strtok_r(pString, ",", &st);
+		WalPrint("PString value for X_RDKCENTRAL-COM_Connected-Client:%s\n", pString);
+		
+		notifyCbFnPtr = getNotifyCB();
+		if (NULL == notifyCbFnPtr) {
+			WalError("Fatal: notifyCbFnPtr is NULL\n");
+			return FALSE;
+		}
+		else
+		{
+			// Data received from stack is not sent upstream to server for Connected Client
+			WalPrint("before sendConnectedClientNotification in cosaDml\n");
+			sendConnectedClientNotification();
+			WalPrint("After sendConnectedClientNotification in cosaDml\n");
+		}
+		
 		p_write_id = strtok_r(NULL, ",", &st);
 		p_new_val = strtok_r(NULL, ",", &st);
 		p_old_val = strtok_r(NULL, ",", &st);
 
-		printf(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
-		printf(" \n Notification : Interface = %s \n", p_write_id);
-		printf(" \n Notification : MAC = %s \n", p_new_val);
-		printf(" \n Notification : Status = %s \n", p_old_val);
+		WalPrint(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
+		WalPrint(" \n Notification : Interface = %s \n", p_write_id);
+		WalPrint(" \n Notification : MAC = %s \n", p_new_val);
+		WalPrint(" \n Notification : Status = %s \n", p_old_val);
 		
 #endif
 		return TRUE;
@@ -224,3 +238,18 @@ void sendUpstreamNotification(char *msg, int size)
 		(*notifyCbFnPtr)(notifyDataPtr);
 	}
 }
+
+/**
+ * @brief sendConnectedClientNotification function to send Connected Client notification
+ * for change to Device.Hosts.Host. dynamic table
+ */
+void sendConnectedClientNotification()
+{
+	NotifyData *notifyDataPtr = (NotifyData *) malloc(sizeof(NotifyData) * 1);
+	// Initializing only notify type and not data as per current requirement. 	
+	notifyDataPtr->type = CONNECTED_CLIENT_NOTIFY;
+	notifyDataPtr->data = NULL;
+
+	(*notifyCbFnPtr)(notifyDataPtr);
+}
+

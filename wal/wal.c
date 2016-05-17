@@ -55,6 +55,9 @@
 #define RDKB_MODEL_NAME			     "Device.DeviceInfo.ModelName"
 #define RDKB_XPC_SYNC_PARAM_SPV              "Device.DeviceInfo.Webpa.X_COMCAST-COM_SyncProtocolVersion"
 #define ALIAS_PARAM							 "Alias"
+#define RDKB_PARAM_HOSTS_NAME		     "Device.Hosts.Host."
+#define RDKB_PARAM_HOSTS_VERSION	     "Device.Hosts.X_RDKCENTRAL-COM_HostVersionId"
+#define RDKB_PARAM_SYSTEM_TIME		     "Device.DeviceInfo.X_RDKCENTRAL-COM_SystemTime"
 #define STR_NOT_DEFINED                      "Not Defined"
 
 /* RDKB Logger defines */
@@ -2128,6 +2131,18 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
 	
 		case WCFG_XPC_SYNC_PARAM_SPV:
 			ret = RDKB_XPC_SYNC_PARAM_SPV;
+			break;
+
+		case WCFG_PARAM_HOSTS_NAME:
+			ret = RDKB_PARAM_HOSTS_NAME;
+			break;
+
+		case WCFG_PARAM_HOSTS_VERSION:
+			ret = RDKB_PARAM_HOSTS_VERSION;
+			break;
+		
+		case WCFG_PARAM_SYSTEM_TIME:
+			ret = RDKB_PARAM_SYSTEM_TIME;
 			break;
 
 		default:
