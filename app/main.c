@@ -32,7 +32,11 @@ int main()
 	// Initialize logger
 
 	LOGInit();
-
+	if (syscfg_init() != 0)
+        {
+        	WalInfo("syscfg init failure\n");
+        	return 1;
+        }
 #ifdef INCLUDE_BREAKPAD
     breakpad_ExceptionHandler();
 #else

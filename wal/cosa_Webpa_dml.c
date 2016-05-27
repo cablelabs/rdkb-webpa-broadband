@@ -10,6 +10,20 @@
 void (*notifyCbFnPtr)(NotifyData*) = NULL;
 void sendUpstreamNotification(char *UpstreamMsg, int size);
 
+WAL_STATUS
+Webpa_DmlDiGetWebPACfg
+    (
+        char*                       ParamName,
+        char*                       pValue
+    );
+
+WAL_STATUS
+Webpa_DmlDiSetWebPACfg
+    (
+        char*                       ParamName,
+        char*                       pValue
+    );
+
 /**********************************************************************  
 
     caller:     owner of this object 
@@ -208,8 +222,398 @@ Webpa_SetParamStringValue
 #endif
 		return TRUE;
 	}    
+
+	/* Required for xPC sync */
+	if( AnscEqualString(ParamName, "X_COMCAST-COM_CID", TRUE))
+    {
+		if (syscfg_set(NULL, "X_COMCAST-COM_CID", pString) != 0) 
+		{
+			WalError("syscfg_set failed\n");
+			
+		}
+		else 
+		{
+			if (syscfg_commit() != 0) 
+			{
+				WalError("syscfg_commit failed\n");
+				
+			}
+			
+			return TRUE;
+		}
+    }
+    	
+    	
+	if( AnscEqualString(ParamName, "X_COMCAST-COM_SyncProtocolVersion", TRUE))
+    {
+
+		if (syscfg_set(NULL, "X_COMCAST-COM_SyncProtocolVersion", pString) != 0) 
+		{
+		     WalError("syscfg_set failed\n");
+		     
+		} 
+		else 
+		{
+		    if (syscfg_commit() != 0)
+		    {
+		    	WalError("syscfg_commit failed\n");
+		    	
+		    }
+		}
+			
+		return TRUE;
+
+   	 }
+	
+	if (AnscEqualString(ParamName, "ServerURL", TRUE))
+	{	
+	       
+	        if(WAL_SUCCESS != Webpa_DmlDiSetWebPACfg(ParamName,pString))
+		{
+			WalError("set failed for %s parameter\n", ParamName);
+			return FALSE;
+		}
+	        
+	        return TRUE;
+	        
+	}      
+	
+	if (AnscEqualString(ParamName, "DeviceNetworkInterface", TRUE))
+	{	
+	        
+	        if(WAL_SUCCESS != Webpa_DmlDiSetWebPACfg(ParamName,pString))
+		{
+			WalError("set failed for %s parameter\n", ParamName);
+			return FALSE;
+		}
+       		
+	        return TRUE;
+	}
+	        	         
+
 	WalPrint("<=========== End of Webpa_SetParamStringValue ========\n");
 
+    return FALSE;
+}
+
+ULONG
+Webpa_GetParamStringValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        char*                       pValue,
+        ULONG*                      pUlSize
+    )
+{
+	
+	/* Required for xPC sync */
+	if( AnscEqualString(ParamName, "X_COMCAST-COM_CID", TRUE))
+    {
+        	/* collect value */
+		char buf[64];
+		syscfg_get( NULL, "X_COMCAST-COM_CID", buf, sizeof(buf));
+
+    		if( buf != NULL )
+    		{
+			AnscCopyString(pValue, buf);
+			return 0;
+		}
+		
+		WalError("Failed to get value for %s parameter\n", ParamName);
+		return -1;
+    }
+    	
+    	
+    	
+	if( AnscEqualString(ParamName, "X_COMCAST-COM_SyncProtocolVersion", TRUE))
+    {
+        /* collect value */
+		char buf[5];
+
+		syscfg_get( NULL, "X_COMCAST-COM_SyncProtocolVersion", buf, sizeof(buf));
+		
+    		if( buf != NULL )
+    		{
+    		    AnscCopyString(pValue,  buf);
+		    return 0;
+    		}
+    		
+    		WalError("Failed to get value for %s parameter\n", ParamName);
+		return -1;
+    }
+    	
+    	
+	  
+	if (AnscEqualString(ParamName, "ServerURL", TRUE))
+	{			
+	        
+    		if(WAL_SUCCESS != Webpa_DmlDiGetWebPACfg(ParamName,pValue))
+		{
+		
+			WalError("Failed to get value for %s parameter\n", ParamName);
+			return 1;
+		}
+		
+		return 0;
+			
+	}
+	
+	if (AnscEqualString(ParamName, "DeviceNetworkInterface", TRUE))
+	{		
+
+		if(WAL_SUCCESS != Webpa_DmlDiGetWebPACfg(ParamName,pValue))
+		{
+
+			WalError("Failed to get value for %s parameter\n", ParamName);
+			return 1;
+		}
+	
+		return 0;
+		
+	}
+	
+	WalError(("Unsupported parameter '%s'\n", ParamName));
+    return -1;
+  
+}
+
+BOOL
+Webpa_GetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL*                       pBool
+    )
+	
+	{
+  
+	 /* check the parameter name and return the corresponding value */
+	   
+		char pchar[128];
+		if (AnscEqualString(ParamName, "Enable", TRUE))
+		{
+			if(WAL_SUCCESS != Webpa_DmlDiGetWebPACfg(ParamName,pchar))
+			{
+				return FALSE;
+			}
+			if(!strncmp(pchar,"true",strlen("true")))
+			{
+				*pBool = TRUE;
+			}
+			else
+			{
+				*pBool = FALSE;
+			}
+			
+			return TRUE;
+		}
+		
+		WalError("Unsupported parameter '%s'\n", ParamName);
+		return FALSE;
+	
+	}
+
+
+BOOL
+Webpa_SetParamBoolValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        BOOL                        bValue
+    )
+	
+	{	
+    
+		if (AnscEqualString(ParamName, "Enable", TRUE))
+		{
+			WalPrint("Already set, do nothing\n");
+			return TRUE;
+		}
+		
+		WalError("Unsupported parameter '%s'\n", ParamName);
+		return FALSE;
+	}
+
+
+BOOL
+Webpa_GetParamIntValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        int*                        pInt
+    )
+
+	{
+		/* check the parameter name and return the corresponding value */   
+
+		char pchar[256]; 	
+	 
+		if( AnscEqualString(ParamName, "ServerPort", TRUE))
+			{
+				if(WAL_SUCCESS != Webpa_DmlDiGetWebPACfg(ParamName,pchar))
+			{
+				WalError("Failed to get value for %s parameter\n", ParamName);
+				return FALSE;
+			}
+			*pInt = atoi(pchar);
+			
+			return TRUE;
+			}
+			
+		if (AnscEqualString(ParamName, "RetryIntervalInSec", TRUE))
+			{
+				if(WAL_SUCCESS != Webpa_DmlDiGetWebPACfg(ParamName,pchar))
+			{
+				WalError("Failed to get value for %s parameter\n", ParamName);
+				return FALSE;
+			}
+			*pInt = atoi(pchar);
+			
+			return TRUE;
+			}
+			
+		if (AnscEqualString(ParamName, "MaxPingWaitTimeInSec", TRUE))
+			{
+			if(WAL_SUCCESS != Webpa_DmlDiGetWebPACfg(ParamName,pchar))
+			{
+				WalError("Failed to get value for %s parameter\n", ParamName);
+				return FALSE;
+			}
+			*pInt = atoi(pchar);
+			
+			return TRUE;
+			}	
+		
+		WalError(("Unsupported parameter '%s'\n", ParamName));
+		return FALSE;
+	
+	
+	}
+
+
+BOOL
+Webpa_SetParamIntValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        int                         iValue
+    )
+{
+    
+    /* check the parameter name and set the corresponding value */
+    if( AnscEqualString(ParamName, "ServerPort", TRUE))
+    {
+		char pchar[256];
+
+		sprintf(pchar,"%d",iValue);
+
+		if(WAL_SUCCESS != Webpa_DmlDiSetWebPACfg(ParamName,pchar))
+		{
+			WalError("set failed for %s parameter\n", ParamName);
+			return FALSE;
+		}
+		
+		return TRUE;
+     }
+     
+    if( AnscEqualString(ParamName, "RetryIntervalInSec", TRUE))
+    {
+        	char pchar[256];
+
+		sprintf(pchar,"%d",iValue);
+
+		if(WAL_SUCCESS != Webpa_DmlDiSetWebPACfg(ParamName,pchar))
+		{
+			WalError("set failed for %s parameter\n", ParamName);
+			return FALSE;
+		}
+		
+		return TRUE;
+    }
+    
+    if( AnscEqualString(ParamName, "MaxPingWaitTimeInSec", TRUE))
+    {
+        	char pchar[256];
+
+		sprintf(pchar,"%d",iValue);	
+
+		if(WAL_SUCCESS != Webpa_DmlDiSetWebPACfg(ParamName,pchar))
+		{
+			WalError("set failed for %s parameter\n", ParamName);
+			return FALSE;
+		}
+		
+		return TRUE;
+    }
+	
+    WalError(("Unsupported parameter '%s'\n", ParamName));
+    return FALSE;
+	
+}
+
+BOOL
+Webpa_GetParamUlongValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        ULONG*                      puLong
+    )
+{
+    /* check the parameter name and return the corresponding value */
+    /* Required for xPC sync */
+   
+	if( AnscEqualString(ParamName, "X_COMCAST-COM_CMC", TRUE))
+    {
+        /* collect value */
+		char buf[8];
+
+		syscfg_get( NULL, "X_COMCAST-COM_CMC", buf, sizeof(buf));
+    	if( buf != NULL )
+    		{
+    		    *puLong = atoi(buf);
+				return TRUE;
+    		}
+		*puLong = 0;
+		WalError("Failed to get value for %s parameter\n", ParamName);
+        return FALSE;
+    }
+		
+}
+
+BOOL
+Webpa_SetParamUlongValue
+    (
+        ANSC_HANDLE                 hInsContext,
+        char*                       ParamName,
+        ULONG                       uValue
+    )
+{
+	
+   /* check the parameter name and set the corresponding value */
+		/* Required for xPC sync */
+	if( AnscEqualString(ParamName, "X_COMCAST-COM_CMC", TRUE))
+    {
+        /* collect value */
+		char buf[8];
+
+		snprintf(buf,sizeof(buf),"%d",uValue);
+		if (syscfg_set(NULL, "X_COMCAST-COM_CMC", buf) != 0) 
+		{
+			WalError(("syscfg_set failed\n"));
+			
+		}
+		else 
+		{
+			if (syscfg_commit() != 0) 
+			{
+				WalError(("syscfg_commit failed\n"));
+				
+			}
+			
+			return TRUE;
+		}
+    }
+	
     return FALSE;
 }
 
@@ -253,3 +657,133 @@ void sendConnectedClientNotification()
 	(*notifyCbFnPtr)(notifyDataPtr);
 }
 
+
+/**
+ * @brief Webpa_DmlDiGetWebPACfg function to fetch Webpa config parameter values from nvram config json
+ */
+#define LINE_SIZE 128
+#define TMP_WEBPA_CFG "/tmp/webpa_cfg.txt"
+#define WEBPA_CFG     "/nvram/webpa_cfg.json"
+ 
+WAL_STATUS
+Webpa_DmlDiGetWebPACfg
+    (
+        char*                       ParamName,
+        char*                       pValue
+    )
+{
+    char str[128];
+    char line[LINE_SIZE];
+    FILE *fd;
+	memset(str, 0, 128);
+	fd = fopen("/nvram/webpa_cfg.json", "r");
+	if(!fd)
+	{	
+		WalError("WEBPA_CFG not available");
+		return WAL_FAILURE;
+	}	
+	fclose(fd);
+	if (AnscEqualString(ParamName, "ServerURL", TRUE))
+	{
+		sprintf(str, "grep -r ServerIP %s | awk '{print $2}' | sed 's|[\"\",]||g' > %s", WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "ServerPort", TRUE))
+	{
+		sprintf(str, "grep -r ServerPort %s | awk '{print $2}' | sed 's|[,]||g' > %s", WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "DeviceNetworkInterface", TRUE))
+	{
+		sprintf(str, "grep -r DeviceNetworkInterface %s | awk '{print $2}' | sed 's|[\"\",]||g' > %s", WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "RetryIntervalInSec", TRUE))
+	{
+		sprintf(str, "grep -r RetryIntervalInSec %s | awk '{print $2}' | sed 's|[,]||g' > %s", WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "MaxPingWaitTimeInSec", TRUE))
+	{
+		sprintf(str, "grep -r MaxPingWaitTimeInSec %s | awk '{print $2}' | sed 's|[,]||g' > %s", WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "Enable", TRUE))
+	{
+		sprintf(str, "grep -r EnablePa %s | awk '{print $2}' | sed 's|[\"\",]||g' > %s", WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+
+	fd = fopen(TMP_WEBPA_CFG, "r");
+	if(fgets(line, LINE_SIZE, fd) != NULL)
+	{
+		strncpy(pValue, line, strlen(line));
+		pValue[strlen(pValue)-1] = '\0';
+		fclose(fd);
+		memset(str, 0, 128);
+		sprintf(str, "rm -rf %s", TMP_WEBPA_CFG);
+		system(str);
+		
+		return WAL_SUCCESS;
+	}
+	return WAL_FAILURE;
+		
+}
+
+/**
+ * @brief Webpa_DmlDiSetWebPACfg function to set Webpa config parameter values in nvram config json
+ */
+WAL_STATUS
+Webpa_DmlDiSetWebPACfg
+    (
+        char*                       ParamName,
+        char*                       pValue
+    )
+{
+    char str[128];
+    char line[LINE_SIZE];
+    FILE *fd;
+	if ((fd = fopen(WEBPA_CFG, "r")) == NULL)
+	{
+		WalError("WEBPA_CFG do not exist\n");
+		return WAL_FAILURE;
+	}
+	fclose(fd);
+	memset(str, 0, 128);
+	if (AnscEqualString(ParamName, "ServerURL", TRUE))
+	{
+		sprintf(str, "sed 's/\\(\"ServerIP\": \\).*/\\1\"%s\",/' %s > %s", pValue, WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "ServerPort", TRUE))
+	{
+		sprintf(str, "sed 's/\\(\"ServerPort\": \\).*/\\1%s,/' %s > %s", pValue, WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "DeviceNetworkInterface", TRUE))
+	{
+		sprintf(str, "sed 's/\\(\"DeviceNetworkInterface\": \\).*/\\1\"%s\",/' %s > %s", pValue, WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "RetryIntervalInSec", TRUE))
+	{
+		sprintf(str, "sed 's/\\(\"RetryIntervalInSec\": \\).*/\\1%s,/' %s > %s", pValue, WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	if (AnscEqualString(ParamName, "MaxPingWaitTimeInSec", TRUE))
+	{
+		sprintf(str, "sed 's/\\(\"MaxPingWaitTimeInSec\": \\).*/\\1%s,/' %s > %s", pValue, WEBPA_CFG, TMP_WEBPA_CFG);
+		system(str);
+	}
+	
+	memset(str, 0, 128);
+	sprintf(str, "rm -rf %s", WEBPA_CFG);
+	system(str);
+	sprintf(str, "cp %s %s", TMP_WEBPA_CFG, WEBPA_CFG);
+	system(str);
+		
+	memset(str, 0, 128);
+	sprintf(str, "rm -rf %s", TMP_WEBPA_CFG);
+	system(str);
+	return WAL_SUCCESS;
+}
