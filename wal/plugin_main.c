@@ -50,8 +50,14 @@ COSA_Init
     
     pPlugInfo->uPluginVersion       = THIS_PLUGIN_VERSION;
     /* register the back-end apis for the data model */
-    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_SetParamStringValue",  Webpa_SetParamStringValue);
- 
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_SetParamStringValue", Webpa_SetParamStringValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_GetParamStringValue", Webpa_GetParamStringValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_GetParamBoolValue",   Webpa_GetParamBoolValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_SetParamBoolValue",   Webpa_SetParamBoolValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_GetParamIntValue",    Webpa_GetParamIntValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_SetParamIntValue",    Webpa_SetParamIntValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_GetParamUlongValue",  Webpa_GetParamUlongValue);
+    pPlugInfo->RegisterFunction(pPlugInfo->hContext, "Webpa_SetParamUlongValue",  Webpa_SetParamUlongValue);
     return  0;
 }
 
