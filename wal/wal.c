@@ -1800,7 +1800,7 @@ static int IndexMpa_WEBPAtoCPE(char *pParameterName)
 	int i = 0, j = 0, dmlNameLen = 0, instNum = 0, len = 0, matchFlag = -1;
 	char pDmIntString[WIFI_MAX_STRING_LEN];
 	char* instNumStart = NULL;
-	char restDmlString[WIFI_MAX_STRING_LEN];
+	char restDmlString[WIFI_MAX_STRING_LEN] = {'\0'};
 	for (i = 0; i < WIFI_PARAM_MAP_SIZE; i++)
 	{
 		dmlNameLen = strlen(CcspDmlName[i]);
@@ -1873,7 +1873,7 @@ static void IndexMpa_CPEtoWEBPA(char **ppParameterName)
 	int i = 0, j = 0, dmlNameLen = 0, instNum =0;
 	char *pDmIntString = NULL;
 	char* instNumStart = NULL;
-	char restDmlString[WIFI_MAX_STRING_LEN];
+	char restDmlString[WIFI_MAX_STRING_LEN]= {'\0'};
 	char *pParameterName = *ppParameterName;
 
 	for (i = 0; i < WIFI_PARAM_MAP_SIZE; i++) 
