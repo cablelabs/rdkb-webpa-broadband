@@ -39,7 +39,8 @@ int main()
         }
 #ifdef INCLUDE_BREAKPAD
     breakpad_ExceptionHandler();
-#else
+#endif
+//Removed breakpad else scenario as sig_handler to gracefully shut down webpa was suppressed.
 
 	signal(SIGTERM, sig_handler);
 	signal(SIGINT, sig_handler);
@@ -53,7 +54,7 @@ int main()
 	signal(SIGQUIT, sig_handler);
 	signal(SIGHUP, sig_handler);
 	signal(SIGALRM, sig_handler);
-#endif
+
 	const char *pComponentName = WEBPA_COMPONENT_NAME;
 	WalInfo("********** Starting component: %s **********\n ", pComponentName); 
 
@@ -70,11 +71,12 @@ int main()
 /*                             Internal functions                             */
 /*----------------------------------------------------------------------------*/
 static void __terminate_listener(int value) {
-	terminateSocketConnection();
+	terminateSocketConnection(value);
 	return;
 }
 static void sig_handler(int sig)
 {
+
 	if ( sig == SIGINT ) {
 		signal(SIGINT, sig_handler); /* reset it to this function */
 		WalInfo("WEBPA SIGINT received!\n");
@@ -99,13 +101,11 @@ static void sig_handler(int sig)
 		signal(SIGALRM, sig_handler); /* reset it to this function */
 		WalInfo("WEBPA SIGALRM received!\n");
 	}
-	else if( sig == SIGTERM ) {
-		signal(SIGTERM, __terminate_listener);
-		WalInfo("WEBPA SIGTERM received!\n");
-		exit(0);
-	}
 	else {
+		WalPrint("sig_handler sig :%d received\n", sig);
+		__terminate_listener(sig);
 		WalInfo("WEBPA Signal %d received!\n", sig);
 		exit(0);
 	}
+	
 }

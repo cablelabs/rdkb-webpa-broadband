@@ -153,6 +153,13 @@
 						  <syntax>string</syntax>
 					           <writable>true</writable>
 					  </parameter>
+					  
+					  <parameter>
+						  <name>X_RDKCENTRAL-COM_LastReconnectReason</name>  
+						  <type>string(64)</type>
+						  <syntax>string</syntax>
+					           <writable>true</writable>
+					  </parameter>
 				  
 				</parameters>
    

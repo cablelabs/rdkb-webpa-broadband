@@ -289,8 +289,26 @@ Webpa_SetParamStringValue
        		
 	        return TRUE;
 	}
-	        	         
-
+	
+	       	         
+        if( AnscEqualString(ParamName, "X_RDKCENTRAL-COM_LastReconnectReason", TRUE))
+        {
+                if (syscfg_set(NULL, "X_RDKCENTRAL-COM_LastReconnectReason", pString) != 0) 
+				{
+					WalError("syscfg_set failed\n");
+			
+				}
+		else 
+		{
+			if (syscfg_commit() != 0) 
+			{
+				WalError("syscfg_commit failed\n");
+				
+			}
+			
+			return TRUE;
+		}
+        }
 	WalPrint("<=========== End of Webpa_SetParamStringValue ========\n");
 
     return FALSE;
@@ -372,6 +390,22 @@ Webpa_GetParamStringValue
 		
 	}
 	
+	if( AnscEqualString(ParamName, "X_RDKCENTRAL-COM_LastReconnectReason", TRUE))
+        {
+      
+        	/* collect value */
+		char buf[64];
+		syscfg_get( NULL, "X_RDKCENTRAL-COM_LastReconnectReason", buf, sizeof(buf));
+
+    		if( buf != NULL )
+    		{
+			AnscCopyString(pValue, buf);
+			return 0;
+		}
+		
+		WalError("Failed to get value for %s parameter\n", ParamName);
+		return -1;
+        }
 	WalError(("Unsupported parameter '%s'\n", ParamName));
     return -1;
   
