@@ -60,6 +60,10 @@
 #define RDKB_PARAM_SYSTEM_TIME		     "Device.DeviceInfo.X_RDKCENTRAL-COM_SystemTime"
 #define STR_NOT_DEFINED                      "Not Defined"
 
+#define RDKB_RECONNECT_REASON		     "Device.DeviceInfo.Webpa.X_RDKCENTRAL-COM_LastReconnectReason"
+#define RDKB_REBOOT_REASON		     "Device.DeviceInfo.X_RDKCENTRAL-COM_LastRebootReason"
+#define RDKB_REBOOT_COUNTER		     "Device.DeviceInfo.X_RDKCENTRAL-COM_LastRebootCounter"
+
 /* RDKB Logger defines */
 #define LOG_FATAL 0
 #define LOG_ERROR 1
@@ -2148,6 +2152,18 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
 		
 		case WCFG_PARAM_SYSTEM_TIME:
 			ret = RDKB_PARAM_SYSTEM_TIME;
+			break;
+			
+		case WCFG_RECONNECT_REASON:
+			ret = RDKB_RECONNECT_REASON;
+			break;
+		
+		case WCFG_REBOOT_REASON:
+			ret = RDKB_REBOOT_REASON;
+			break;
+			
+		case WCFG_REBOOT_COUNTER:
+			ret = RDKB_REBOOT_COUNTER;
 			break;
 
 		default:
