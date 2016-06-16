@@ -64,6 +64,8 @@
 #define RDKB_REBOOT_REASON		     "Device.DeviceInfo.X_RDKCENTRAL-COM_LastRebootReason"
 #define RDKB_REBOOT_COUNTER		     "Device.DeviceInfo.X_RDKCENTRAL-COM_LastRebootCounter"
 
+#define CCSP_ERR_WIFI_BUSY					503
+
 /* RDKB Logger defines */
 #define LOG_FATAL 0
 #define LOG_ERROR 1
@@ -107,6 +109,7 @@ ComponentVal SubComponentValArray[RDKB_TR181_OBJECT_LEVEL2_COUNT] = {'\0'};
 BOOL bRadioRestartEn = FALSE;
 BOOL bRestartRadio1 = FALSE;
 BOOL bRestartRadio2 = FALSE;
+BOOL applySettingsFlag = FALSE;
 pthread_mutex_t applySetting_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t applySetting_cond = PTHREAD_COND_INITIALIZER;
 int compCacheSuccessCnt = 0, subCompCacheSuccessCnt = 0;
@@ -472,24 +475,18 @@ void getValues(const char *paramName[], const unsigned int paramCount, ParamVal 
 		  	
 		  	for(cnt2 = 0; cnt2 < ParamGroup[cnt1].parameterCount; cnt2++)
 		  	{
-			 		WalPrint("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
+			 	WalPrint("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
 		  	}
-			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)) 
+			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME) && applySettingsFlag == TRUE) 
 			{
-				WalPrint("Before mutex lock in getValues\n");
-				pthread_mutex_lock (&applySetting_mutex);
-				WalPrint("After mutex lock in getValues\n");
+				ret = CCSP_ERR_WIFI_BUSY;
+				break;
 			}
 		  	// GET atomic value call
 			WalPrint("startIndex %d\n",startIndex);
 		  	ret = getAtomicParamValues(ParamGroup[cnt1].parameterName, ParamGroup[cnt1].parameterCount, ParamGroup[cnt1].comp_name, ParamGroup[cnt1].dbus_path, paramValArr, startIndex,&retCount);
 			
 			WalPrint("After getAtomic ParamValues :retCount = %d\n",retCount);
-			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)) 
-			{
-				pthread_mutex_unlock (&applySetting_mutex);
-				WalPrint("After thread unlock in getValues\n");
-			}
 		  	if(ret != CCSP_SUCCESS)
 		  	{
 				WalError("Get Atomic Values call failed for ParamGroup[%d]->comp_name :%s ret: %d\n",cnt1,ParamGroup[cnt1].comp_name,ret);
@@ -522,7 +519,7 @@ static void free_ParamCompList(ParamCompList *ParamGroup, int compCount)
 	{
 	  	for(cnt2 = 0; cnt2 < ParamGroup[cnt1].parameterCount; cnt2++)
 	  	{
-	     		WAL_FREE(ParamGroup[cnt1].parameterName[cnt2]);
+	     	WAL_FREE(ParamGroup[cnt1].parameterName[cnt2]);
 	  	}
 		WAL_FREE(ParamGroup[cnt1].parameterName);
 		WAL_FREE(ParamGroup[cnt1].comp_name);
@@ -625,21 +622,15 @@ void getAttributes(const char *paramName[], const unsigned int paramCount, AttrV
 		  	{
 			 		WalPrint("ParamGroup[%d].parameterName :%s\n",cnt1,ParamGroup[cnt1].parameterName[cnt2]);
 		  	}
-			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)) 
+			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)&& applySettingsFlag == TRUE) 
 			{
-				WalPrint("Before mutex lock in getValues\n");
-				pthread_mutex_lock (&applySetting_mutex);
-				WalPrint("After mutex lock in getValues\n");
+				ret = CCSP_ERR_WIFI_BUSY;
+				break;
 			}
 		  	// GET atomic value call
 			WalPrint("startIndex %d\n",startIndex);
 		  	ret = getAtomicParamAttributes(ParamGroup[cnt1].parameterName, ParamGroup[cnt1].parameterCount, ParamGroup[cnt1].comp_name, ParamGroup[cnt1].dbus_path, attr, startIndex);
 			
-			if(!strcmp(ParamGroup[cnt1].comp_name,RDKB_WIFI_FULL_COMPONENT_NAME)) 
-			{
-				pthread_mutex_unlock (&applySetting_mutex);
-				WalPrint("After thread unlock in getValues\n");
-			}
 		  	if(ret != CCSP_SUCCESS)
 		  	{
 				WalError("Get Atomic Values call failed for ParamGroup[%d]->comp_name :%s ret: %d\n",cnt1,ParamGroup[cnt1].comp_name,ret);
@@ -741,6 +732,8 @@ static WAL_STATUS mapStatus(int ret)
 			return WAL_ERR_INVALID_PARAM;
 		case CCSP_CR_ERR_UNSUPPORTED_DATATYPE:
 			return WAL_ERR_UNSUPPORTED_DATATYPE;
+		case CCSP_ERR_WIFI_BUSY:
+			return WAL_ERR_WIFI_BUSY;
 		default:
 			return WAL_FAILURE;
 	}
@@ -1359,9 +1352,12 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	
 	if(!strcmp(CompName,RDKB_WIFI_FULL_COMPONENT_NAME)) 
 	{		
+		if(applySettingsFlag == TRUE)
+		{
+			free_set_param_values_memory(val,paramCount,faultParam);
+			return CCSP_ERR_WIFI_BUSY;
+		}
 		identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
-		WalPrint("Before mutex lock in setParamValues\n");
-		pthread_mutex_lock (&applySetting_mutex);
 		bRadioRestartEn = TRUE;		
 	}
 		
@@ -1373,9 +1369,6 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 			pthread_cond_signal(&applySetting_cond);
 			WalPrint("condition signalling in setParamValues\n");
 		}
-		
-		pthread_mutex_unlock (&applySetting_mutex);
-		WalPrint("mutex unlock in setParamValues\n");
 		
 	}	
 	if (ret != CCSP_SUCCESS && faultParam) 
@@ -1435,6 +1428,8 @@ static void *applyWiFiSettingsTask()
 		{
 			WalPrint("Before cond wait in applyWiFiSettings\n");
 			pthread_cond_wait(&applySetting_cond, &applySetting_mutex);
+			applySettingsFlag = TRUE;
+			WalPrint("applySettingsFlag is set to TRUE\n");
 			getCurrentTime(startPtr);
 			WalPrint("After cond wait in applyWiFiSettings\n");
 			if(bRadioRestartEn)
@@ -1472,9 +1467,10 @@ static void *applyWiFiSettingsTask()
 				{
 					WalError("Failed to Set Apply Settings\n");
 				}	
+				applySettingsFlag = FALSE;
+				WalPrint("applySettingsFlag is set to FALSE\n");
 			}
-			WalPrint("Before thread unlock in applyWiFiSettings\n");
-			pthread_mutex_unlock (&applySetting_mutex);
+
 			getCurrentTime(endPtr);
 			WalInfo("Elapsed time for apply setting : %ld ms\n", timeValDiff(startPtr, endPtr));
 		}
