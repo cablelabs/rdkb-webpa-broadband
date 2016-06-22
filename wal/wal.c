@@ -277,14 +277,16 @@ static int getComponentDetails(char *parameterName,char ***compName,char ***dbus
 	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
 	char **localCompName = NULL;
 	char **localDbusPath = NULL;
-	char tempCompName[MAX_PARAMETERNAME_LEN/2] = { 0 };
-	char tempDbusPath[MAX_PARAMETERNAME_LEN/2] = { 0 };
+	char tempParamName[MAX_PARAMETERNAME_LEN] = {'\0'};
+	char tempCompName[MAX_PARAMETERNAME_LEN/2] = {'\0'};
+	char tempDbusPath[MAX_PARAMETERNAME_LEN/2] = {'\0'};
 	
 	componentStruct_t ** ppComponents = NULL;
 	walStrncpy(l_Subsystem, "eRT.",sizeof(l_Subsystem));
 	snprintf(dst_pathname_cr, sizeof(dst_pathname_cr),"%s%s", l_Subsystem, CCSP_DBUS_INTERFACE_CR);
+	walStrncpy(tempParamName, parameterName,sizeof(tempParamName));
 	WalPrint("======= start of getComponentDetails ========\n");
-	index = getComponentInfoFromCache(parameterName, objectName, tempCompName, tempDbusPath);
+	index = getComponentInfoFromCache(tempParamName, objectName, tempCompName, tempDbusPath);
 	WalPrint("index : %d\n",index);
 	// Cannot identify the component from cache, make DBUS call to fetch component
 	if(index == -1 || ComponentValArray[index].comp_size > 2) //anything above size > 2
@@ -293,7 +295,7 @@ static int getComponentDetails(char *parameterName,char ***compName,char ***dbus
 		// GET Component for parameter from stack
 		if(index != -1)
 		        WalPrint("ComponentValArray[index].comp_size : %d\n",ComponentValArray[index].comp_size);
-		retIndex = IndexMpa_WEBPAtoCPE(parameterName);
+		retIndex = IndexMpa_WEBPAtoCPE(tempParamName);
 		if(retIndex == -1)
 		{
 			ret = CCSP_ERR_INVALID_PARAMETER_NAME;
@@ -301,10 +303,10 @@ static int getComponentDetails(char *parameterName,char ***compName,char ***dbus
 			*error = 1;
 			return ret;
 		}
-		WalPrint("Get component for parameterName : %s from stack\n",parameterName);
+		WalPrint("Get component for parameterName : %s from stack\n",tempParamName);
 
 		ret = CcspBaseIf_discComponentSupportingNamespace(bus_handle,
-			dst_pathname_cr, parameterName, l_Subsystem, &ppComponents, &size);
+			dst_pathname_cr, tempParamName, l_Subsystem, &ppComponents, &size);
 		WalPrint("size : %d, ret : %d\n",size,ret);
 
 		if (ret == CCSP_SUCCESS)
@@ -325,7 +327,7 @@ static int getComponentDetails(char *parameterName,char ***compName,char ***dbus
 		}
 		else
 		{
-			WalError("Parameter name %s is not supported. ret = %d\n", parameterName, ret);
+			WalError("Parameter name %s is not supported. ret = %d\n", tempParamName, ret);
 			free_componentStruct_t(bus_handle, size, ppComponents);
 			*error = 1;
 			return ret;
@@ -2174,10 +2176,6 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
  */
 void WALInit()
 {
-	// Wait till PSM, WiFi components are ready on the stack.
-	waitForComponentReady(CCSP_DBUS_PSM,CCSP_DBUS_PATH_PSM);
-	waitForComponentReady(RDKB_WIFI_COMPONENT_NAME,RDKB_WIFI_DBUS_PATH);
-	
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
 	char l_Subsystem[MAX_DBUS_INTERFACE_LEN] = { 0 };
 	int ret = 0, i = 0, size = 0, len = 0, cnt = 0, cnt1 = 0, retryCount = 0;
@@ -3100,12 +3098,23 @@ static void getWritableParams(char *paramName, char ***writableParams, int *para
 }
 
 /**
- * @brief waitForReadyCondition wait till PAM component is ready, its health is green
+ * @brief waitForConnectReadyCondition wait till PAM component is ready, its health is green
  * Wait for PAM as need to get CM_MAC, CMC, CID from it before connecting to server
  */
-void waitForReadyCondition()
+void waitForConnectReadyCondition()
 {
 	waitForComponentReady(RDKB_PAM_COMPONENT_NAME,RDKB_PAM_DBUS_PATH);
+}
+
+/**
+ * @brief waitForOperationalReadyCondition wait till PSM and WiFi components are ready, health is green
+ * Wifi is ready means the major operational feature is ready
+ */
+void waitForOperationalReadyCondition()
+{
+	// Wait till PSM, WiFi components are ready on the stack.
+	waitForComponentReady(CCSP_DBUS_PSM,CCSP_DBUS_PATH_PSM);
+	waitForComponentReady(RDKB_WIFI_COMPONENT_NAME,RDKB_WIFI_DBUS_PATH);
 }
 
 /**
