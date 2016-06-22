@@ -160,7 +160,8 @@ Webpa_SetParamStringValue
 	{
 	#ifdef USE_NOTIFY_COMPONENT
 
-		printf(" \n WebPA : Notification Received \n");
+		WalPrint(" \n WebPA : Notification Received \n");
+		
 		p_notify_param_name = strtok_r(pString, ",", &st);
 		p_write_id = strtok_r(NULL, ",", &st);
 		p_new_val = strtok_r(NULL, ",", &st);
@@ -168,15 +169,16 @@ Webpa_SetParamStringValue
 		p_val_type = strtok_r(NULL, ",", &st);
 		
 		//printf(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
-
+		if(p_val_type !=NULL && p_write_id !=NULL)
+		{
 			value_type = atoi(p_val_type);
 			write_id = atoi(p_write_id);
 
-			printf(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
-			printf(" \n Notification : New Value = %s \n", p_new_val);
-			printf(" \n Notification : Old Value = %s \n", p_old_val);
-			printf(" \n Notification : Value Type = %d \n", value_type);
-			printf(" \n Notification : Component ID = %d \n", write_id);
+			WalPrint(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
+			WalPrint(" \n Notification : New Value = %s \n", p_new_val);
+			WalPrint(" \n Notification : Old Value = %s \n", p_old_val);
+			WalPrint(" \n Notification : Value Type = %d \n", value_type);
+			WalPrint(" \n Notification : Component ID = %d \n", write_id);
 
 			param.parameterName = p_notify_param_name;
 			param.oldValue = p_old_val;
@@ -185,6 +187,12 @@ Webpa_SetParamStringValue
 			param.writeID = write_id;
 
 			ccspWebPaValueChangedCB(&param,0,NULL);
+		}
+		else
+		{
+			WalError("Received insufficient data to process notification\n");
+		}
+		
 #endif
 		return TRUE;
 	}    
