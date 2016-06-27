@@ -62,7 +62,7 @@
 
 #define RDKB_RECONNECT_REASON		     "Device.DeviceInfo.Webpa.X_RDKCENTRAL-COM_LastReconnectReason"
 #define RDKB_REBOOT_REASON		     "Device.DeviceInfo.X_RDKCENTRAL-COM_LastRebootReason"
-#define RDKB_REBOOT_COUNTER		     "Device.DeviceInfo.X_RDKCENTRAL-COM_LastRebootCounter"
+
 
 #define CCSP_ERR_WIFI_BUSY					503
 
@@ -2159,11 +2159,7 @@ const char* getWebPAConfig(WCFG_PARAM_NAME param)
 		case WCFG_REBOOT_REASON:
 			ret = RDKB_REBOOT_REASON;
 			break;
-			
-		case WCFG_REBOOT_COUNTER:
-			ret = RDKB_REBOOT_COUNTER;
-			break;
-
+		
 		default:
 			ret = STR_NOT_DEFINED;
 	}
