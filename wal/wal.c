@@ -103,7 +103,7 @@ typedef struct
 /*----------------------------------------------------------------------------*/
 /*                            File Scoped Variables                           */
 /*----------------------------------------------------------------------------*/
-void (*notifyCbFn)(ParamNotify*) = NULL;
+void (*notifyCbFn)(NotifyData*) = NULL;
 static ComponentVal ComponentValArray[RDKB_TR181_OBJECT_LEVEL1_COUNT] = {'\0'};
 ComponentVal SubComponentValArray[RDKB_TR181_OBJECT_LEVEL2_COUNT] = {'\0'};
 BOOL bRadioRestartEn = FALSE;
@@ -114,6 +114,7 @@ pthread_mutex_t applySetting_mutex = PTHREAD_MUTEX_INITIALIZER;
 pthread_cond_t applySetting_cond = PTHREAD_COND_INITIALIZER;
 int compCacheSuccessCnt = 0, subCompCacheSuccessCnt = 0;
 static char *CcspDmlName[WIFI_PARAM_MAP_SIZE] = {"Device.WiFi.Radio", "Device.WiFi.SSID", "Device.WiFi.AccessPoint"};
+static char current_transaction_id[MAX_PARAMETERVALUE_LEN] = {'\0'};
 static CpeWebpaIndexMap IndexMap[WIFI_INDEX_MAP_SIZE] = {
 {10000, 1},
 {10100, 2},
@@ -205,7 +206,7 @@ static int getAtomicParamValues(char *pParameterName[], int paramCount, char *Co
 static int getAtomicParamAttributes(char *parameterNames[], int paramCount, char *CompName, char *dbusPath, AttrVal ***attr, int startIndex);
 static void free_ParamCompList(ParamCompList *ParamGroup, int compCount);
 static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalParams);
-static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType);
+static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType,char * transaction_id);
 static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal **attArr,int paramCount);
 static int setParamAttributes(const char *pParameterName, const AttrVal *attArr);
 static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *paramVal, char *paramName);
@@ -236,6 +237,7 @@ static void addCachedData(const char *objectName,TableData * addList,int rowCoun
 static void getWritableParams(char *paramName, char ***writableParams, int *paramCount);
 static void waitForComponentReady(char *compName, char *dbusPath);
 static void checkComponentHealthStatus(char * compName, char * dbusPath, char *status, int *retStatus);
+static void send_transaction_Notify();
 extern ANSC_HANDLE bus_handle;
 
 /*----------------------------------------------------------------------------*/
@@ -661,10 +663,10 @@ void getAttributes(const char *paramName[], const unsigned int paramCount, AttrV
  * @param[out] retStatus Returns parameter Value from the stack
  */
 
-void setValues(const ParamVal paramVal[], const unsigned int paramCount, const WEBPA_SET_TYPE setType, WAL_STATUS *retStatus)
+void setValues(const ParamVal paramVal[], const unsigned int paramCount, const WEBPA_SET_TYPE setType, WAL_STATUS *retStatus,char * transaction_id)
 {
 	int cnt = 0, ret = 0;
-	ret = setParamValues(paramVal, paramCount, setType);
+	ret = setParamValues(paramVal, paramCount, setType,transaction_id);
 
 	for (cnt = 0; cnt < paramCount; cnt++) 
 	{
@@ -1204,7 +1206,7 @@ static int getAtomicParamAttributes(char *parameterNames[], int paramCount, char
  * @param[in] setType set for atomic set
  */
 
-static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType)
+static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType,char * transaction_id)
 {
 	char* faultParam = NULL;
 	char dst_pathname_cr[MAX_PATHNAME_CR_LEN] = { 0 };
@@ -1368,6 +1370,18 @@ static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_T
 	{
 		if(ret == CCSP_SUCCESS) //signal apply settings thread only when set is success
 		{
+			if(transaction_id != NULL)
+			{
+				WalPrint("Copy transaction_id to current_transaction_id \n");
+				walStrncpy(current_transaction_id, transaction_id,sizeof(current_transaction_id));
+				WalPrint("In wal, current_transaction_id %s, transaction_id %s\n",current_transaction_id,transaction_id);    
+			}
+			else
+			{
+				WalError("transaction_id in request is NULL\n");
+				memset(current_transaction_id,0,sizeof(current_transaction_id));
+			}
+		    
 			pthread_cond_signal(&applySetting_cond);
 			WalPrint("condition signalling in setParamValues\n");
 		}
@@ -1468,7 +1482,12 @@ static void *applyWiFiSettingsTask()
 				if (ret != CCSP_SUCCESS && faultParam) 
 				{
 					WalError("Failed to Set Apply Settings\n");
+					WAL_FREE(faultParam);
 				}	
+				
+				// Send transcation event notify to server
+				send_transaction_Notify();
+				
 				applySettingsFlag = FALSE;
 				WalPrint("applySettingsFlag is set to FALSE\n");
 			}
@@ -1484,6 +1503,38 @@ static void *applyWiFiSettingsTask()
 	WalPrint("============ End =============\n");
 }
 
+static void send_transaction_Notify()
+{
+	// Send notify event to server
+	WalPrint("Send trans status event to server \n");
+	if (NULL == notifyCbFn) 
+	{
+		WalError("Fatal: notifyCbFn is NULL\n");
+		return;
+	}
+	else if(strlen(current_transaction_id) == 0)
+	{
+		WalError("current_transaction_id is empty, hence not sending transaction status event\n");
+	}	
+	else
+	{
+		WalPrint("Allocate memory to NotifyData \n");
+		TransData *msgPtr = (TransData *) malloc(sizeof(TransData) * 1);
+		msgPtr->transId = (char *)malloc(sizeof(char) * sizeof(current_transaction_id));
+		walStrncpy(msgPtr->transId, current_transaction_id,sizeof(current_transaction_id));
+		WalPrint("current_transaction_id %s, transId %s\n", current_transaction_id, msgPtr->transId);
+
+		NotifyData *notifyDataPtr = (NotifyData *) malloc(sizeof(NotifyData) * 1);
+		notifyDataPtr->type = TRANS_STATUS;
+
+		Notify_Data *notify_data = (Notify_Data *) malloc(sizeof(Notify_Data) * 1);
+		notify_data->status = msgPtr;
+
+		notifyDataPtr->data = notify_data;
+
+		(*notifyCbFn)(notifyDataPtr);
+	}
+}
 
 /**
  * @brief free_set_param_values_memory to free memory allocated in setParamValues function
