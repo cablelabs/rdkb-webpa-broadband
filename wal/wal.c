@@ -192,6 +192,49 @@ static char *subObjectList[] =
 "Device.DeviceInfo.SupportedDataModel."
 }; 
 
+const char * notifyparameters[]={
+"Device.Bridging.Bridge.1.Port.8.Enable",
+"Device.Bridging.Bridge.2.Port.2.Enable",
+"Device.DeviceInfo.X_COMCAST_COM_xfinitywifiEnable",
+"Device.WiFi.AccessPoint.10001.Security.ModeEnabled",
+"Device.WiFi.AccessPoint.10001.Security.X_COMCAST-COM_KeyPassphrase",
+"Device.WiFi.AccessPoint.10001.SSIDAdvertisementEnabled",
+"Device.WiFi.AccessPoint.10001.X_CISCO_COM_MACFilter.Enable",
+"Device.WiFi.AccessPoint.10001.X_CISCO_COM_MACFilter.FilterAsBlackList",
+"Device.WiFi.AccessPoint.10101.Security.ModeEnabled",
+"Device.WiFi.AccessPoint.10101.Security.X_COMCAST-COM_KeyPassphrase",
+"Device.WiFi.AccessPoint.10101.SSIDAdvertisementEnabled",
+"Device.WiFi.AccessPoint.10101.X_CISCO_COM_MACFilter.Enable",
+"Device.WiFi.AccessPoint.10101.X_CISCO_COM_MACFilter.FilterAsBlackList",
+"Device.WiFi.Radio.10000.Enable",
+"Device.WiFi.Radio.10100.Enable",
+"Device.WiFi.SSID.10001.Enable",
+"Device.WiFi.SSID.10001.SSID",
+"Device.WiFi.SSID.10101.Enable",
+"Device.WiFi.SSID.10101.SSID",
+"Device.X_CISCO_COM_DeviceControl.LanManagementEntry.1.LanMode",
+"Device.X_CISCO_COM_Security.Firewall.FilterAnonymousInternetRequests",
+"Device.X_CISCO_COM_Security.Firewall.FilterHTTP",
+"Device.X_CISCO_COM_Security.Firewall.FilterIdent",
+"Device.X_CISCO_COM_Security.Firewall.FilterMulticast",
+"Device.X_CISCO_COM_Security.Firewall.FilterP2P",
+"Device.X_CISCO_COM_Security.Firewall.FirewallLevel",
+// Commenting this parameter to avoid PSM crash
+//"Device.DHCPv4.Server.Enable",
+"Device.X_CISCO_COM_DeviceControl.LanManagementEntry.1.LanIPAddress",
+"Device.X_CISCO_COM_DeviceControl.LanManagementEntry.1.LanSubnetMask",
+"Device.DHCPv4.Server.Pool.1.MinAddress",
+"Device.DHCPv4.Server.Pool.1.MaxAddress",
+"Device.DHCPv4.Server.Pool.1.LeaseTime",
+// Commenting as some boxes may not have this parameter
+//"Device.Routing.Router.1.IPv4Forwarding.1.GatewayIPAddress",
+"Device.NAT.X_CISCO_COM_DMZ.Enable",
+"Device.NAT.X_CISCO_COM_DMZ.InternalIP",
+"Device.NAT.X_CISCO_COM_DMZ.IPv6Host",
+"Device.NAT.X_Comcast_com_EnablePortMapping",
+"Device.NotifyComponent.X_RDKCENTRAL-COM_Connected-Client"
+};
+
 /*----------------------------------------------------------------------------*/
 /*                             Function Prototypes                            */
 /*----------------------------------------------------------------------------*/
@@ -3233,3 +3276,17 @@ static void checkComponentHealthStatus(char * compName, char * dbusPath, char *s
 }
 
 
+/**
+ * @brief getNotifyParamList Get notification parameters from intial NotifList
+ * returns notif parameter names and size of list
+ * @param[inout] paramList Initial Notif parameters list
+ * @param[inout] size Notif List array size
+ */
+void getNotifyParamList(const char ***paramList, int *size)
+{
+	*size = sizeof(notifyparameters)/sizeof(notifyparameters[0]);
+	WalPrint("Notify param list size :%d\n", *size);
+	
+      	*paramList = notifyparameters;
+
+}
