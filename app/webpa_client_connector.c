@@ -170,8 +170,12 @@ static void* WebPA_Server_Run(void* argp)
     //TODO any action required
   }
   
-  //xprt = svctcp_create(RPC_ANYSOCK, 0, 0); // to create (bind) socket first
+#ifdef INTEL_PUMA7
+  xprt = svctcp_create(RPC_ANYSOCK, 0, 0); // to create (bind) socket first
+#else
   xprt = svctcp_create(sock, 0, 0); // to create (bind) socket first
+#endif
+
   if (xprt == NULL)
   {
     int err = errno;
