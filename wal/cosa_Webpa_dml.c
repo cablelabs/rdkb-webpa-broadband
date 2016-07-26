@@ -85,6 +85,9 @@ Webpa_SetParamStringValue
 	char* p_old_val;
 	char* p_notify_param_name;
 	char* st;
+	char* p_interface_name = NULL;
+	char* p_mac_id = NULL;
+	char* p_status = NULL;
 	char* p_val_type;
 	UINT value_type,write_id;
 	parameterSigStruct_t param = {0};
@@ -201,31 +204,31 @@ Webpa_SetParamStringValue
 	{
 	#ifdef USE_NOTIFY_COMPONENT
 	
-		WalPrint(" \n WebPA : Connected-Client Received \n");
-		p_notify_param_name = strtok_r(pString, ",", &st);
-		WalPrint("PString value for X_RDKCENTRAL-COM_Connected-Client:%s\n", pString);
-		
-		notifyCbFnPtr = getNotifyCB();
-		if (NULL == notifyCbFnPtr) {
-			WalError("Fatal: notifyCbFnPtr is NULL\n");
-			return FALSE;
-		}
-		else
-		{
-			// Data received from stack is not sent upstream to server for Connected Client
-			WalPrint("before sendConnectedClientNotification in cosaDml\n");
-			sendConnectedClientNotification();
-			WalPrint("After sendConnectedClientNotification in cosaDml\n");
-		}
-		
-		p_write_id = strtok_r(NULL, ",", &st);
-		p_new_val = strtok_r(NULL, ",", &st);
-		p_old_val = strtok_r(NULL, ",", &st);
+                WalPrint(" \n WebPA : Connected-Client Received \n");
+                p_notify_param_name = strtok_r(pString, ",", &st);
+                WalPrint("PString value for X_RDKCENTRAL-COM_Connected-Client:%s\n", pString);
 
-		WalPrint(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
-		WalPrint(" \n Notification : Interface = %s \n", p_write_id);
-		WalPrint(" \n Notification : MAC = %s \n", p_new_val);
-		WalPrint(" \n Notification : Status = %s \n", p_old_val);
+                p_interface_name = strtok_r(NULL, ",", &st);
+                p_mac_id = strtok_r(NULL, ",", &st);
+                p_status = strtok_r(NULL, ",", &st);
+
+                WalPrint(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
+                WalPrint(" \n Notification : Interface = %s \n", p_interface_name);
+                WalPrint(" \n Notification : MAC = %s \n", p_mac_id);
+                WalPrint(" \n Notification : Status = %s \n", p_status);
+                
+                notifyCbFnPtr = getNotifyCB();
+                
+                if (NULL == notifyCbFnPtr) 
+                {
+                        WalError("Fatal: notifyCbFnPtr is NULL\n");
+                        return FALSE;
+                }
+                else
+                {
+                        // Data received from stack is not sent upstream to server for Connected Client
+                        sendConnectedClientNotification(p_mac_id, p_status);
+                }
 		
 #endif
 		return TRUE;
@@ -689,13 +692,29 @@ void sendUpstreamNotification(char *msg, int size)
  * @brief sendConnectedClientNotification function to send Connected Client notification
  * for change to Device.Hosts.Host. dynamic table
  */
-void sendConnectedClientNotification()
+void sendConnectedClientNotification(char * macId, char *status)
 {
 	NotifyData *notifyDataPtr = (NotifyData *) malloc(sizeof(NotifyData) * 1);
-	// Initializing only notify type and not data as per current requirement. 	
+	NodeData * node = NULL;
+	
 	notifyDataPtr->type = CONNECTED_CLIENT_NOTIFY;
-	notifyDataPtr->data = NULL;
-
+	if(macId != NULL && status != NULL)
+	{
+		node = (NodeData *) malloc(sizeof(NodeData) * 1);
+		memset(node,sizeof(node),0);
+		WalPrint("macId : %s status : %s\n",macId,status);
+		node->nodeMacId = (char *)(malloc(sizeof(char) * strlen(macId) + 1));
+		strncpy(node->nodeMacId, macId, strlen(macId) + 1);
+				
+		node->status = (char *)(malloc(sizeof(char) * strlen(status) + 1));
+		strncpy(node->status, status, strlen(status) + 1);
+		WalPrint("node->nodeMacId : %s node->status: %s\n",node->nodeMacId,node->status);
+	}
+	
+	Notify_Data *notify_data = (Notify_Data *) malloc(sizeof(Notify_Data) * 1);
+	notify_data->node = node;
+	notifyDataPtr->data = notify_data;
+	
 	(*notifyCbFnPtr)(notifyDataPtr);
 }
 
