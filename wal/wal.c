@@ -248,7 +248,7 @@ static int getAtomicParamAttributes(char *parameterNames[], int paramCount, char
 static void free_ParamCompList(ParamCompList *ParamGroup, int compCount);
 static int getParamAttributes(char *pParameterName, AttrVal ***attr, int *TotalParams);
 static int setParamValues(ParamVal paramVal[], int paramCount, const WEBPA_SET_TYPE setType, money_trace_spans *timeSpan,char * transaction_id);
-static int setAtomicParamValues(ParamVal *paramVal, char *CompName, char *dbusPath, int paramCount,const WEBPA_SET_TYPE setType,char * transaction_id);
+static int setAtomicParamValues(ParamVal *paramVal, char *CompName, char *dbusPath, int paramCount,const WEBPA_SET_TYPE setType,char * transaction_id, uint32_t *duration);
 static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal **attArr,int paramCount, money_trace_spans *timeSpan);
 static int setParamAttributes(const char *pParameterName, const AttrVal *attArr);
 static int prepare_parameterValueStruct(parameterValStruct_t* val, ParamVal *paramVal, char *paramName);
@@ -748,6 +748,8 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
         char **dbusPath = NULL;
         ParamVal **val = NULL;
         ParamVal **rollbackVal = NULL;
+        uint32_t duration = 0;
+        
         ParamVal ***storeGetValue = NULL;// To store param values before failure occurs
 
         WalPrint("=============== Start of setValues =============\n");
@@ -781,7 +783,14 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
 
                 storeGetValue = (ParamVal ***)malloc(sizeof(ParamVal **) * compCount);
                 memset(storeGetValue,0,(sizeof(ParamVal **) * compCount));
-
+                
+                if(timeSpan)
+                {
+                        timeSpan->spans = (money_trace_span *) malloc(sizeof(money_trace_span)* compCount);
+                        memset(timeSpan->spans,0,(sizeof(money_trace_span)* compCount));
+                        timeSpan->count = compCount;
+                }
+		
                 for(j = 0; j < compCount ;j++)
                 {
                         WalInfo("ParamGroup[%d].comp_name :%s, ParamGroup[%d].dbus_path :%s, ParamGroup[%d].parameterCount :%d\n",j,ParamGroup[j].comp_name, j,ParamGroup[j].dbus_path, j,ParamGroup[j].parameterCount);
@@ -796,7 +805,7 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
                 for (i = 0; i < compCount; i++)
                 {
                         //GET values for rollback purpose
-                        ret = getAtomicParamValues(ParamGroup[i].parameterName, ParamGroup[i].parameterCount, ParamGroup[i].comp_name, ParamGroup[i].dbus_path, NULL, i, &storeGetValue[i], startIndex,&retCount);
+                        ret = getAtomicParamValues(ParamGroup[i].parameterName, ParamGroup[i].parameterCount, ParamGroup[i].comp_name, ParamGroup[i].dbus_path, timeSpan, i, &storeGetValue[i], startIndex,&retCount);
 
                         WalPrint("After GAPV ret = %d :retCount = %d\n",ret,retCount);
                         if(ret != CCSP_SUCCESS)
@@ -876,8 +885,16 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
                                 }
                                 else
                                 {
-                                        ret = setAtomicParamValues(val[i], ParamGroup[i].comp_name,ParamGroup[i].dbus_path,ParamGroup[i].parameterCount, setType,transaction_id);	
+                                        WalPrint("ParamGroup[%d].comp_name : %s\n",i,ParamGroup[i].comp_name);
+                                        ret = setAtomicParamValues(val[i], ParamGroup[i].comp_name,ParamGroup[i].dbus_path,ParamGroup[i].parameterCount, setType,transaction_id,&duration);	
                                         WalPrint("ret : %d\n",ret);
+                                        if(timeSpan)
+                                        {
+                                                WalPrint("timeSpan->spans[%d].name : %s\n",i,timeSpan->spans[i].name);
+                                                WalPrint("duration : %lu\n",duration);
+                                                timeSpan->spans[i].duration = timeSpan->spans[i].duration + duration;
+                                                WalPrint("timeSpan->spans[%d].duration : %lu\n",i,timeSpan->spans[i].duration);
+                                        }
                                         if(ret != CCSP_SUCCESS)
                                         {
                                                 WalError("Failed to do atomic set hence rollbacking the changes. ret :%d\n",ret);
@@ -889,8 +906,16 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
                                                         //skip for wifi rollback
                                                         if(indexWifi != rev)
                                                         {
-                                                                checkSetstatus = setAtomicParamValues(rollbackVal[rev],ParamGroup[rev].comp_name,ParamGroup[rev].dbus_path, ParamGroup[rev].parameterCount, setType,transaction_id);
+                                                                WalPrint("ParamGroup[%d].comp_name : %s\n",rev,ParamGroup[rev].comp_name);
+                                                                checkSetstatus = setAtomicParamValues(rollbackVal[rev],ParamGroup[rev].comp_name,ParamGroup[rev].dbus_path, ParamGroup[rev].parameterCount, setType,transaction_id,&duration);
                                                                 WalPrint("checkSetstatus is : %d\n",checkSetstatus);
+                                                                if(timeSpan)
+                                                                {
+                                                                        WalPrint("timeSpan->spans[%d].name : %s\n",rev,timeSpan->spans[rev].name);
+                                                                        WalPrint("duration : %lu\n",duration);
+                                                                        timeSpan->spans[rev].duration = timeSpan->spans[rev].duration + duration;
+                                                                        WalPrint("timeSpan->spans[%d].duration : %lu\n",rev,timeSpan->spans[rev].duration);
+                                                                }
                                                                 if(checkSetstatus != CCSP_SUCCESS)
                                                                 {
                                                                         WalError("While rollback Failed to do atomic set. checkSetstatus :%d\n",checkSetstatus);
@@ -911,7 +936,15 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
                         if(indexWifi !=-1)
                         {
                                 WalPrint("Wifi SET at end\n");
-                                ret = setAtomicParamValues(val[indexWifi], ParamGroup[indexWifi].comp_name,ParamGroup[indexWifi].dbus_path, ParamGroup[indexWifi].parameterCount, setType,transaction_id);	
+                                WalPrint("ParamGroup[%d].comp_name : %s\n",indexWifi,ParamGroup[indexWifi].comp_name);
+                                ret = setAtomicParamValues(val[indexWifi], ParamGroup[indexWifi].comp_name,ParamGroup[indexWifi].dbus_path, ParamGroup[indexWifi].parameterCount, setType,transaction_id,&duration);
+                                if(timeSpan)
+                                {
+                                        WalPrint("timeSpan->spans[%d].name : %s\n",indexWifi,timeSpan->spans[indexWifi].name);
+                                        WalPrint("duration : %lu\n",duration);
+                                        timeSpan->spans[indexWifi].duration = timeSpan->spans[indexWifi].duration + duration;
+                                        WalPrint("timeSpan->spans[%d].duration : %lu\n",indexWifi,timeSpan->spans[indexWifi].duration);
+                                }	
                                 if(ret != CCSP_SUCCESS)
                                 {
                                         WalError("Failed atomic set for WIFI hence rollbacking the changes. ret :%d and i is %d\n",ret,i);
@@ -923,8 +956,16 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
                                                 //skip for wifi rollback
                                                 if(indexWifi != rev)
                                                 {
-                                                        checkSetstatus = setAtomicParamValues(rollbackVal[rev], ParamGroup[rev].comp_name,ParamGroup[rev].dbus_path, ParamGroup[rev].parameterCount, setType,transaction_id);	
+                                                        WalPrint("ParamGroup[%d].comp_name : %s\n",rev,ParamGroup[rev].comp_name);
+                                                        checkSetstatus = setAtomicParamValues(rollbackVal[rev], ParamGroup[rev].comp_name,ParamGroup[rev].dbus_path, ParamGroup[rev].parameterCount, setType,transaction_id,&duration);	
                                                         WalPrint("checkSetstatus is: %d\n",checkSetstatus);
+                                                        if(timeSpan)
+                                                        {
+                                                                WalPrint("timeSpan->spans[%d].name : %s\n",rev,timeSpan->spans[rev].name);
+                                                                WalPrint("duration : %lu\n",duration);
+                                                                timeSpan->spans[rev].duration = timeSpan->spans[rev].duration + duration;
+                                                                WalPrint("timeSpan->spans[%d].duration : %lu\n",rev,timeSpan->spans[rev].duration);
+                                                        }
                                                         if(checkSetstatus != CCSP_SUCCESS)
                                                         {
                                                                 WalError("While rollback Failed to do atomic set. checkSetstatus :%d\n",checkSetstatus);
@@ -1553,80 +1594,93 @@ static int getAtomicParamAttributes(char *parameterNames[], int paramCount, char
 	return ret;
 }
 
-static int setAtomicParamValues(ParamVal *paramVal, char *CompName, char *dbusPath, int paramCount,const WEBPA_SET_TYPE setType,char * transaction_id)
+static int setAtomicParamValues(ParamVal *paramVal, char *CompName, char *dbusPath, int paramCount,const WEBPA_SET_TYPE setType,char * transaction_id, uint32_t *duration)
 {
-	char* faultParam = NULL;
-	int ret=0, size = 0, cnt = 0, cnt1=0, retIndex=0, index = -1;
-	char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
-	char objectName[MAX_PARAMETERNAME_LEN] = { 0 };
-	unsigned int writeID = CCSP_COMPONENT_ID_WebPA;
+        char* faultParam = NULL;
+        int ret=0, size = 0, cnt = 0, cnt1=0, retIndex=0, index = -1;
+        char paramName[MAX_PARAMETERNAME_LEN] = { 0 };
+        char objectName[MAX_PARAMETERNAME_LEN] = { 0 };
+        unsigned int writeID = CCSP_COMPONENT_ID_WebPA;
+        uint64_t startTime = 0, endTime = 0;
+        struct timespec start, end;
+        uint32_t timeDuration = 0;
 
-	WalInfo("------------------ start of setAtomicParamValues ----------------\n");
-	parameterValStruct_t* val = (parameterValStruct_t*) malloc(sizeof(parameterValStruct_t) * paramCount);
-	memset(val,0,(sizeof(parameterValStruct_t) * paramCount));
+        WalPrint("------------------ start of setAtomicParamValues ----------------\n");
+        parameterValStruct_t* val = (parameterValStruct_t*) malloc(sizeof(parameterValStruct_t) * paramCount);
+        memset(val,0,(sizeof(parameterValStruct_t) * paramCount));
 
-	for (cnt = 0; cnt < paramCount; cnt++)
-	{
-		retIndex=0;
-		walStrncpy(paramName, paramVal[cnt].name,sizeof(paramName));
-		WalInfo("Inside setAtomicParamValues paramName is %s \n",paramName);
-		retIndex = IndexMpa_WEBPAtoCPE(paramName);
-		if(retIndex == -1)
-		{
-			ret = CCSP_ERR_INVALID_PARAMETER_NAME;
-			WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
-			free_set_param_values_memory(val,paramCount,faultParam);
-			return ret;
-		}
-		WalInfo("B4 prepare_parameterValueStruct\n");
-		ret = prepare_parameterValueStruct(&val[cnt], &paramVal[cnt], paramName);
-		if(ret)
-		{
-			WalError("Preparing parameter value struct is Failed \n");
-			free_set_param_values_memory(val,paramCount,faultParam);
-			return ret;
-		}
-	}
+        for (cnt = 0; cnt < paramCount; cnt++)
+        {
+                retIndex=0;
+                walStrncpy(paramName, paramVal[cnt].name,sizeof(paramName));
+                WalPrint("Inside setAtomicParamValues paramName is %s \n",paramName);
+                retIndex = IndexMpa_WEBPAtoCPE(paramName);
+                if(retIndex == -1)
+                {
+                        ret = CCSP_ERR_INVALID_PARAMETER_NAME;
+                        WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
+                        free_set_param_values_memory(val,paramCount,faultParam);
+                        return ret;
+                }
+                WalPrint("B4 prepare_parameterValueStruct\n");
+                ret = prepare_parameterValueStruct(&val[cnt], &paramVal[cnt], paramName);
+                if(ret)
+                {
+                        WalError("Preparing parameter value struct is Failed \n");
+                        free_set_param_values_memory(val,paramCount,faultParam);
+                        return ret;
+                }
+        }
 
-	writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
+        writeID = (setType == WEBPA_ATOMIC_SET_XPC)? CCSP_COMPONENT_ID_XPC: CCSP_COMPONENT_ID_WebPA;
 
-	if(!strcmp(CompName,RDKB_WIFI_FULL_COMPONENT_NAME))
-	{
-		identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
-		bRadioRestartEn = TRUE;
-	}
+        if(!strcmp(CompName,RDKB_WIFI_FULL_COMPONENT_NAME))
+        {
+                identifyRadioIndexToReset(paramCount,val,&bRestartRadio1,&bRestartRadio2);
+                bRadioRestartEn = TRUE;
+        }
 
-	ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, val, paramCount, TRUE, &faultParam);
-	if(!strcmp(CompName,RDKB_WIFI_FULL_COMPONENT_NAME))
-	{
-		if(ret == CCSP_SUCCESS) //signal apply settings thread only when set is success
-		{
-		    if(transaction_id != NULL)
-			{
-				WalPrint("Copy transaction_id to current_transaction_id \n");
-				walStrncpy(current_transaction_id, transaction_id,sizeof(current_transaction_id));
-				WalPrint("In wal, current_transaction_id %s, transaction_id %s\n",current_transaction_id,transaction_id);    
-			}
-			else
-			{
-				WalError("transaction_id in request is NULL\n");
-				memset(current_transaction_id,0,sizeof(current_transaction_id));
-			}
-			
-			pthread_cond_signal(&applySetting_cond);
-			WalInfo("condition signalling in setAtomicParamValues\n");
-		}
+        startTime = getCurrentTimeInMicroSeconds(&start);
 
-	}
-	if (ret != CCSP_SUCCESS && faultParam)
-	{
-		WalError("Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
-		free_set_param_values_memory(val,paramCount,faultParam);
-		return ret;
-	}
-	free_set_param_values_memory(val,paramCount,faultParam);
-	WalInfo("------------------ End of setAtomicParamValues ----------------\n");
-	return ret;
+        ret = CcspBaseIf_setParameterValues(bus_handle, CompName, dbusPath, 0, writeID, val, paramCount, TRUE, &faultParam);
+
+        endTime = getCurrentTimeInMicroSeconds(&end);	
+        timeDuration = endTime - startTime;
+        WalPrint("timeDuration : %lu\n",timeDuration);
+        *duration = timeDuration;
+        WalPrint("*duration : %lu\n",*duration);
+
+        if(!strcmp(CompName,RDKB_WIFI_FULL_COMPONENT_NAME))
+        {
+                if(ret == CCSP_SUCCESS) //signal apply settings thread only when set is success
+                {
+                        if(transaction_id != NULL)
+                        {
+                                WalPrint("Copy transaction_id to current_transaction_id \n");
+                                walStrncpy(current_transaction_id, transaction_id,sizeof(current_transaction_id));
+                                WalPrint("In wal, current_transaction_id %s, transaction_id %s\n",current_transaction_id,transaction_id);    
+                        }
+                        else
+                        {
+                                WalError("transaction_id in request is NULL\n");
+                                memset(current_transaction_id,0,sizeof(current_transaction_id));
+                        }
+
+                        pthread_cond_signal(&applySetting_cond);
+                        WalPrint("condition signalling in setAtomicParamValues\n");
+                }
+        }
+        
+        if (ret != CCSP_SUCCESS && faultParam)
+        {
+                WalError("Failed to SetAtomicValue for param  '%s' ret : %d \n", faultParam, ret);
+                free_set_param_values_memory(val,paramCount,faultParam);
+                return ret;
+        }
+        
+        free_set_param_values_memory(val,paramCount,faultParam);
+        WalPrint("------------------ End of setAtomicParamValues ----------------\n");
+        return ret;
 }
 /**
  * @brief setParamValues Returns the status from stack for SET request
@@ -2016,7 +2070,7 @@ static void free_set_param_values_memory(parameterValStruct_t* val, int paramCou
 
 static void free_paramVal_memory(ParamVal ** val, int paramCount)
 {
-	WalInfo("Inside free_paramVal_memory\n");
+	WalPrint("Inside free_paramVal_memory\n");
 	int cnt1 = 0;
 	for (cnt1 = 0; cnt1 < paramCount; cnt1++)
 	{
