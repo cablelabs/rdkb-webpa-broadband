@@ -822,8 +822,10 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
                                         {
                                                 WAL_FREE(storeGetValue[cnt1][j]->name);
                                                 WAL_FREE(storeGetValue[cnt1][j]->value);
+                                                WalPrint("Freeing storeGetValue[cnt1][j] in failure case\n");
+                                                WAL_FREE(storeGetValue[cnt1][j]);
                                         }
-                                        free_paramVal_memory(storeGetValue[cnt1],ParamGroup[cnt1].parameterCount);
+                                        WAL_FREE(storeGetValue[cnt1]);
                                 }
 
                                 break;
@@ -988,8 +990,10 @@ void setValues(const ParamVal paramVal[], const unsigned int paramCount, const W
                                 {
                                         WAL_FREE(storeGetValue[i][j]->name);
                                         WAL_FREE(storeGetValue[i][j]->value);
+                                        WalPrint("Freeing storeGetValue[cnt1][j] in success case\n");
+                                        WAL_FREE(storeGetValue[i][j]);
                                 }
-                                free_paramVal_memory(storeGetValue[i],ParamGroup[i].parameterCount);
+                                WAL_FREE(storeGetValue[i]);
                         }
                 }
                 WalPrint("------ Free for val ------\n");
