@@ -1155,6 +1155,9 @@ void sendIoTNotification(void* iotMsg, int size)
 	{
 		WalError("Error allocating memory in sendIoTNotification fn\n");
 		WAL_FREE(iotMsg);
+		/*RDKB-7322, CID-32918, free unused resources before exit*/
+		WAL_FREE(paramNotify->paramName); 
+		WAL_FREE(paramNotify);
 		return;
 	}
 	sprintf(str, "%.*s", size, (char *)iotMsg);
@@ -2314,6 +2317,7 @@ static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal 
 		{
 			WalError("Component name is not supported ret : %d\n", ret);
 			WAL_FREE(attriStruct);
+			free_componentDetails(compName,dbusPath,count); /*RDKB-7322, CID-33270, CID-33154; free unused resource before exit */
 			return ret;
 		}			
 		WalPrint("paramName: %s count: %d\n",paramName,count);
@@ -2325,6 +2329,9 @@ static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal 
 		{
 			WalError("Error: Parameters does not belong to the same component\n");
 			WAL_FREE(attriStruct);
+			/*RDKB-7322, CID-33270, CID-33208, CID-33154, CID-33007; free unused resource before exit */
+			free_componentDetails(compName,dbusPath,count);
+			free_componentDetails(tempCompName,tempDbusPath,count1);
 			return CCSP_FAILURE;
 		}		
 		retIndex = IndexMpa_WEBPAtoCPE(paramName);
@@ -2332,7 +2339,10 @@ static int setAtomicParamAttributes(const char *pParameterName[], const AttrVal 
 		{
 			ret = CCSP_ERR_INVALID_PARAMETER_NAME;
 			WalError("Parameter name %s is not supported.ret : %d\n", paramName, ret);
-			WAL_FREE(attriStruct);	
+			WAL_FREE(attriStruct);
+			/*RDKB-7322, CID-33270, CID-33208, CID-33154, CID-33007; free unused resource before exit */
+			free_componentDetails(compName,dbusPath,count);
+			free_componentDetails(tempCompName,tempDbusPath,count1);
 			return ret;
 		}
 
