@@ -121,7 +121,7 @@ Webpa_SetParamStringValue
 			case MSGPACK_UNPACK_SUCCESS:
 				WalInfo("MSGPACK_UNPACK_SUCCESS :%d\n",unpack_ret);
 				WalPrint("\nmsgpack decoded data is:");
-				msgpack_object_print(stdout, deserialized);
+				//msgpack_object_print(stdout, deserialized);
 			break;
 			case MSGPACK_UNPACK_EXTRA_BYTES:
 				WalError("MSGPACK_UNPACK_EXTRA_BYTES :%d\n",unpack_ret);
