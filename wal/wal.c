@@ -35,6 +35,8 @@
 #define RDKB_WEBPA_COMPONENT_NAME               "com.cisco.spvtg.ccsp.webpaagent"
 #define RDKB_PAM_COMPONENT_NAME		        "com.cisco.spvtg.ccsp.pam"
 #define RDKB_PAM_DBUS_PATH		        "/com/cisco/spvtg/ccsp/pam"
+#define RDKB_CM_COMPONENT_NAME                  "com.cisco.spvtg.ccsp.cm"
+#define RDKB_CM_DBUS_PATH                       "/com/cisco/spvtg/ccsp/cm"
 #define RDKB_WIFI_COMPONENT_NAME	        "com.cisco.spvtg.ccsp.wifi"
 #define RDKB_WIFI_DBUS_PATH		        "/com/cisco/spvtg/ccsp/wifi"
 #define RDKB_WIFI_FULL_COMPONENT_NAME	        "eRT.com.cisco.spvtg.ccsp.wifi"
@@ -3723,6 +3725,7 @@ static void getWritableParams(char *paramName, char ***writableParams, int *para
 void waitForConnectReadyCondition()
 {
 	waitForComponentReady(RDKB_PAM_COMPONENT_NAME,RDKB_PAM_DBUS_PATH);
+	waitForComponentReady(RDKB_CM_COMPONENT_NAME,RDKB_CM_DBUS_PATH);
 }
 
 /**
