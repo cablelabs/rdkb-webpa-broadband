@@ -147,6 +147,7 @@ static int getSocketFd()
   {
     int err = errno;
     WalError("Error sockfd bind\n");
+    close(sockfd); /*RDKB-7321, CID-33524, free unused resources before exit */
     return err;
   }
   return sockfd;
@@ -179,6 +180,10 @@ static void* WebPA_Server_Run(void* argp)
   if (xprt == NULL)
   {
     int err = errno;
+    if( sock != -1 )/*RDKB-7321, CID-33489, free resources before exit*/
+    {
+      close(sock);
+    }
     WalError("can't create service\n");
     pthread_exit(&err);
   }
@@ -187,11 +192,16 @@ static void* WebPA_Server_Run(void* argp)
   if (ret == 0)
   {
     int err = errno;
+    if( sock != -1 )/*RDKB-7321, CID-33489, free resources before exit*/
+    {
+      close(sock);
+    }
     WalError("unable to register rpc program (prog=%d, vers=%d, proto=tcp)\n", WEBPA_PROG, WEBPA_VERS);
     pthread_exit(&err);
   }
     
   svc_run();
+  /*coverity[leaked_handle] RDKB-7321, CID-33489, Socket created required for webpa */
   return NULL;
 }
 
