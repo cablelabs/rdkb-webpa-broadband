@@ -94,7 +94,7 @@ Webpa_SetParamStringValue
 #endif
 
 	WalPrint("<========= Start of Webpa_SetParamStringValue ========>\n");
-	WalInfo("Received data ParamName %s,data length: %d bytes, Value : %s\n",ParamName, strlen(pString), pString);
+	WalInfo("Received data ParamName %s,data length: %d bytes\n",ParamName, strlen(pString));
 	
 	if( AnscEqualString(ParamName, "PostData", TRUE))
     	{    		
@@ -119,7 +119,7 @@ Webpa_SetParamStringValue
 		switch(unpack_ret)
 		{
 			case MSGPACK_UNPACK_SUCCESS:
-				WalInfo("MSGPACK_UNPACK_SUCCESS :%d\n",unpack_ret);
+				WalPrint("MSGPACK_UNPACK_SUCCESS :%d\n",unpack_ret);
 				WalPrint("\nmsgpack decoded data is:");
 				//msgpack_object_print(stdout, deserialized);
 			break;
