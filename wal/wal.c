@@ -46,7 +46,7 @@
 #if defined(_COSA_BCM_MIPS_)
 #define RDKB_WEBPA_DEVICE_MAC                   "Device.DPoE.Mac_address"
 #else
-#define RDKB_WEBPA_DEVICE_MAC                   "Device.DeviceInfo.X_COMCAST-COM_CM_MAC"
+#define RDKB_WEBPA_DEVICE_MAC                   "Device.X_CISCO_COM_CableModem.MACAddress"
 #endif
 #define RDKB_WEBPA_DEVICE_REBOOT_PARAM          "Device.X_CISCO_COM_DeviceControl.RebootDevice"
 #define RDKB_WEBPA_DEVICE_REBOOT_VALUE          "Device"
