@@ -2619,6 +2619,7 @@ static int getMatchingSubComponentValArrayIndex(char *objectName)
 
 /**
  * @brief getObjectName Get object name from parameter name. Example WiFi from "Device.WiFi.SSID."
+ * objectName parameter should be initialized with null terminating characters to handle error scenarios
  *
  * @param[in] str Parameter Name
  * param[out] objectName Set with the object name
@@ -2629,24 +2630,26 @@ static void getObjectName(char *str, char *objectName, int objectLevel)
 	char *tmpStr;
 	char localStr[MAX_PARAMETERNAME_LEN]={'\0'};
 	walStrncpy(localStr,str,sizeof(localStr));
-	int count = 1;
-	
+
+	int count = 1,len;
+        
 	if(localStr)
-	{	
-		tmpStr = strtok(localStr,".");
-		
-		while (tmpStr != NULL)
-		{
-			tmpStr = strtok (NULL, ".");
-			if(tmpStr && count >= objectLevel)
-			{
-				strcpy(objectName,tmpStr);
-				WalPrint("_________ objectName %s__________ \n",objectName);
-	    		        break;
-			}
-			count++;
-	  	}
-	}
+        {	
+                tmpStr = strchr(localStr,'.');
+                while (tmpStr != NULL)
+                {
+                        tmpStr=strchr(tmpStr+1,'.');
+                        len = tmpStr-localStr+1;
+                        WalPrint ("found at %d\n",len);
+                        if(tmpStr && count >= objectLevel)
+                        {
+                                strncpy(objectName,localStr,len);
+                                WalPrint("_________ objectName %s__________ \n",objectName);
+                                break;
+                        }
+                        count++;
+                }
+        }
 }
 
 
