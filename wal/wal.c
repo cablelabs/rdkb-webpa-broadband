@@ -2644,6 +2644,7 @@ static void getObjectName(char *str, char *objectName, int objectLevel)
                         if(tmpStr && count >= objectLevel)
                         {
                                 strncpy(objectName,localStr,len);
+				objectName[len]='\0';
                                 WalPrint("_________ objectName %s__________ \n",objectName);
                                 break;
                         }
@@ -2835,6 +2836,7 @@ void WALInit()
 				retryCount = 0;
 				// Allocate memory for ComponentVal obj_name, comp_name, dbus_path
 				ComponentValArray[cnt].obj_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
+				memset(ComponentValArray[cnt].obj_name, 0, sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
 				ComponentValArray[cnt].comp_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
 				ComponentValArray[cnt].dbus_path = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
 
@@ -2886,6 +2888,7 @@ void WALInit()
 				retryCount = 0;
 				// Allocate memory for ComponentVal obj_name, comp_name, dbus_path
 				SubComponentValArray[cnt1].obj_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
+				memset(SubComponentValArray[cnt1].obj_name, 0, sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
 				SubComponentValArray[cnt1].comp_name = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
 				SubComponentValArray[cnt1].dbus_path = (char *)malloc(sizeof(char) * (MAX_PARAMETERNAME_LEN/2));
 
