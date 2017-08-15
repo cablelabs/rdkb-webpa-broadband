@@ -106,6 +106,7 @@ Webpa_SetParamStringValue
 	char* p_interface_name = NULL;
 	char* p_mac_id = NULL;
 	char* p_status = NULL;
+	char* p_hostname = NULL;
 	char* p_val_type;
 	UINT value_type,write_id;
 	parameterSigStruct_t param = {0};
@@ -229,11 +230,13 @@ Webpa_SetParamStringValue
                 p_interface_name = strtok_r(NULL, ",", &st);
                 p_mac_id = strtok_r(NULL, ",", &st);
                 p_status = strtok_r(NULL, ",", &st);
+                p_hostname = strtok_r(NULL, ",", &st);
 
                 WalPrint(" \n Notification : Parameter Name = %s \n", p_notify_param_name);
                 WalPrint(" \n Notification : Interface = %s \n", p_interface_name);
                 WalPrint(" \n Notification : MAC = %s \n", p_mac_id);
                 WalPrint(" \n Notification : Status = %s \n", p_status);
+                WalPrint(" \n Notification : HostName = %s \n", p_hostname);
                 
                 notifyCbFnPtr = getNotifyCB();
                 
@@ -245,7 +248,7 @@ Webpa_SetParamStringValue
                 else
                 {
                         // Data received from stack is not sent upstream to server for Connected Client
-                        sendConnectedClientNotification(p_mac_id, p_status);
+                        sendConnectedClientNotification(p_mac_id, p_status, p_interface_name, p_hostname);
                 }
 		
 #endif
@@ -710,23 +713,30 @@ void sendUpstreamNotification(char *msg, int size)
  * @brief sendConnectedClientNotification function to send Connected Client notification
  * for change to Device.Hosts.Host. dynamic table
  */
-void sendConnectedClientNotification(char * macId, char *status)
+void sendConnectedClientNotification(char * macId, char *status, char* interface, char* hostname)
 {
 	NotifyData *notifyDataPtr = (NotifyData *) malloc(sizeof(NotifyData) * 1);
 	NodeData * node = NULL;
 	
 	notifyDataPtr->type = CONNECTED_CLIENT_NOTIFY;
-	if(macId != NULL && status != NULL)
+	if(macId != NULL && status != NULL && interface != NULL && hostname != NULL)
 	{
 		node = (NodeData *) malloc(sizeof(NodeData) * 1);
 		memset(node,sizeof(node),0);
-		WalPrint("macId : %s status : %s\n",macId,status);
+		WalPrint("macId : %s status : %s interface : %s hostname :%s\n",macId, status, interface, hostname);
 		node->nodeMacId = (char *)(malloc(sizeof(char) * strlen(macId) + 1));
 		strncpy(node->nodeMacId, macId, strlen(macId) + 1);
 				
 		node->status = (char *)(malloc(sizeof(char) * strlen(status) + 1));
 		strncpy(node->status, status, strlen(status) + 1);
-		WalPrint("node->nodeMacId : %s node->status: %s\n",node->nodeMacId,node->status);
+		
+		node->interface = (char *)(malloc(sizeof(char) * strlen(interface) + 1));
+		strncpy(node->interface, interface, strlen(interface) + 1);
+		
+		node->hostname = (char *)(malloc(sizeof(char) * strlen(hostname) + 1));
+		strncpy(node->hostname, hostname, strlen(hostname) + 1);
+		
+		WalPrint("node->nodeMacId : %s node->status: %s node->interface: %s node->hostname: %s\n",node->nodeMacId,node->status, node->interface, node->hostname);
 	}
 	
 	Notify_Data *notify_data = (Notify_Data *) malloc(sizeof(Notify_Data) * 1);
