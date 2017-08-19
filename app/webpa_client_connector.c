@@ -188,8 +188,8 @@ static void* WebPA_Server_Run(void* argp)
     WalError("pmap_unset failed\n"); 
     //TODO any action required
   }
-  
-#ifdef INTEL_PUMA7
+ 
+#if defined (INTEL_PUMA7)  || (defined (_COSA_BCM_ARM_) && !defined(_CBR_PRODUCT_REQ_)) // ARRIS XB6 ATOM, TCXB6
   xprt = svctcp_create(RPC_ANYSOCK, 0, 0); // to create (bind) socket first
 #else
   xprt = svctcp_create(sock, 0, 0); // to create (bind) socket first
